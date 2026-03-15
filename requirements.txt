@@ -1,0 +1,10 @@
+# use "pip install -r requirements.txt" to install the requirements
+customtkinter==5.2.2
+tkinterdnd2==0.4.3
+Pillow==12.1.1
+pytesseract==0.3.13
+keyboard==0.13.5
+pyperclip==1.11.0
+deep-translator==1.11.4
+python-dotenv==1.0.1
+pyttsx3==2.99
