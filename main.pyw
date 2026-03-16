@@ -10,11 +10,13 @@ import keyboard
 import pyperclip
 import threading
 import ctypes
-import logging
-import logging.handlers
 import sys
 from dotenv import load_dotenv
 import pyttsx3
+import win32gui
+import win32process
+import win32api
+import win32con
 
 from components.tooltip import ToolTip
 from components.hot_key_settings_row import HotkeySettingRow
@@ -107,10 +109,39 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         )
 
     def show_app(self):
-        self.deiconify()  # Bring back from hidden state
-        self.lift()  # Move to top of window stack
-        self.focus_force()  # Take keyboard focus
-        self.attributes("-alpha", 1.0)  # Ensure it's opaque
+        self.deiconify()
+
+        hwnd = self.winfo_id()
+
+        # 1. Get the thread ID of the current foreground window
+        curr_foreground_thread = win32process.GetWindowThreadProcessId(
+            win32gui.GetForegroundWindow()
+        )[0]
+        # 2. Get the thread ID of your own app
+        this_thread = win32api.GetCurrentThreadId()
+
+        try:
+            # 3. Attach your thread to the foreground thread to "borrow" permission
+            if curr_foreground_thread != this_thread:
+                win32process.AttachThreadInput(
+                    this_thread, curr_foreground_thread, True
+                )
+
+                # 4. Perform the focus shift
+                win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
+                win32gui.SetForegroundWindow(hwnd)
+
+                # 5. Detach now that we're done
+                win32process.AttachThreadInput(
+                    this_thread, curr_foreground_thread, False
+                )
+        except Exception as e:
+            # Fallback if the thread trick fails (e.g., trying to over-ride a system window)
+            self.attributes("-topmost", True)
+            self.after(10, lambda: self.attributes("-topmost", False))
+
+        self.focus_force()
+        self.attributes("-alpha", 1.0)
 
     def _setup_menu(self):
         self.menu_bar = ctk.CTkFrame(self, height=50, corner_radius=0)
@@ -286,17 +317,36 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         # Pack it with a top pady so it respects the modal's top rounded corners
         self.settings_panel.pack(fill="both", expand=True, pady=(10, 0), padx=10)
         # Use grid_configure because the internal structure uses grid
-        self.settings_panel._label.grid_configure(pady=(10, 0), padx=20)
+        self.settings_panel._label.grid_configure(pady=(5, 5), padx=20)
 
         # region Hotkey Settings
         # Application Invoke Hotkey
+        def application_invoke_hotkey_event_handler(event=None):
+            state["hotkey_settings"]["application_invoke_hotkey"]["hotkey"] = (
+                "ctrl+shift+" + event.widget.get().lower()
+            )
+            if self._hotkey_handle_application_invoke:
+                keyboard.remove_hotkey(self._hotkey_handle_application_invoke)
+            self._hotkey_handle_application_invoke = keyboard.add_hotkey(
+                state["hotkey_settings"]["application_invoke_hotkey"]["hotkey"],
+                lambda: self.after(0, show_app_request),
+            )
+
         HotkeySettingRow(
             self.settings_panel,
             label_text="Enable Hotkey for Application Invoke:",
             default_key="Q",
             is_enabled=state["hotkey_settings"]["application_invoke_hotkey"]["enable"],
+            always_enabled=True,
             tooltip_text="Invoke the application",
-        ).pack(pady=10, padx=30, fill="x")
+            hotkey_event_handler=application_invoke_hotkey_event_handler,
+            is_enabled_var_trace=lambda enabled_var_value: state.__setitem__(
+                "hotkey_settings",
+                "application_invoke_hotkey",
+                "enable",
+                enabled_var_value,
+            ),
+        ).pack(pady=(10, 0), padx=30, fill="x")
 
         # Background Process Hotkey
         HotkeySettingRow(
@@ -304,15 +354,29 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             label_text="Enable Hotkey for Background Process:",
             default_key="X",
             is_enabled=state["hotkey_settings"]["background_process_hotkey"]["enable"],
+            always_enabled=False,
             tooltip_text="Instant process the recently captured image, the result will be copied to the clipboard",
-        ).pack(pady=10, padx=30, fill="x")
+            hotkey_event_handler=None,
+        ).pack(pady=(10, 10), padx=30, fill="x")
         # endregion
 
-        # Opacity Toggles
+        ctk.CTkFrame(
+            self.settings_panel,
+            height=2,
+            fg_color=("#dbdbdb", "#3d3d3d"),
+            border_width=0,
+        ).pack(fill="x", padx=15, pady=10)
+
+        # region Opacity Toggles
         self.dim_var = ctk.BooleanVar(value=state["enable_focus_dim"])
+        # Add this "trace" to link the variable back to the dictionary
+        self.dim_var.trace_add(
+            "write",
+            lambda *args: state.__setitem__("enable_focus_dim", self.dim_var.get()),
+        )
         ctk.CTkCheckBox(
             self.settings_panel, text="Auto-dim on Focus Lost", variable=self.dim_var
-        ).pack(pady=10, padx=30, anchor="w")
+        ).pack(pady=(10, 0), padx=30, anchor="w")
 
         ctk.CTkLabel(self.settings_panel, text="Focus-out Opacity Level:").pack(
             pady=(10, 0), padx=30, anchor="w"
@@ -322,8 +386,16 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         )
         self.opacity_slider.set(state["idle_opacity"])
         self.opacity_slider.pack(pady=10, padx=30, fill="x")
+        # endregion
 
-        # Voice Management Section
+        ctk.CTkFrame(
+            self.settings_panel,
+            height=2,
+            fg_color=("#dbdbdb", "#3d3d3d"),
+            border_width=0,
+        ).pack(fill="x", padx=15, pady=10)
+
+        # region Voice Management Section
         # Button to trigger Windows installation
         install_btn = ctk.CTkButton(
             self.settings_panel,
@@ -333,14 +405,14 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             height=30,
         )
         install_btn.pack(pady=10, padx=30)
+        # endregion
 
-        separator = ctk.CTkFrame(
+        ctk.CTkFrame(
             self.settings_modal,
             height=2,
             fg_color=("#dbdbdb", "#3d3d3d"),
             border_width=0,
-        )
-        separator.pack(fill="x", padx=15, pady=(5, 0))
+        ).pack(fill="x", padx=15, pady=(5, 0))
 
         self.save_btn = ctk.CTkButton(
             self.settings_modal,
@@ -352,10 +424,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         )
         self.save_btn.pack(fill="x", padx=25, pady=(10, 20))
 
-        # Close the settings panel via shortcut
-        self._hotkey_handle_close = keyboard.add_hotkey(
-            "esc", lambda: self.after(0, lambda: self.close_settings())
-        )
+        # Close the settings panel via Escape key
+        self.bind("<Escape>", lambda event: self.close_settings())
 
     def _install_voice_ui(self):
         self.voice_management_frame = ctk.CTkFrame(
@@ -677,7 +747,10 @@ if __name__ == "__main__":
 
     # 3. Register the hotkey to just 'deiconify' (unhide) the app
     # We don't need a separate thread here because the app is already 'alive'
-    keyboard.add_hotkey("ctrl+shift+q", show_app_request)
+    app._hotkey_handle_application_invoke = keyboard.add_hotkey(
+        state["hotkey_settings"]["application_invoke_hotkey"]["hotkey"],
+        show_app_request,
+    )
 
     logger.info("Background OCR Tool Active (Resident Mode)...")
 
