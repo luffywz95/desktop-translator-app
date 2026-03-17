@@ -1,10 +1,9 @@
 import os
 import customtkinter as ctk
 from tkinter import messagebox
-from numpy import spacing
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from tkinterdnd2.TkinterDnD import _require as _require_tkdnd
-from PIL import ImageGrab, Image, ImageOps
+from PIL import ImageGrab, Image, ImageOps, ImageTk
 import pytesseract
 import keyboard
 import pyperclip
@@ -17,6 +16,8 @@ import win32gui
 import win32process
 import win32api
 import win32con
+import lmdb
+import json
 
 from components.tooltip import ToolTip
 from components.hot_key_settings_row import HotkeySettingRow
@@ -25,6 +26,7 @@ from components.logger import Logger
 # --- 1. System & Engine Setup ---
 ctypes.windll.shcore.SetProcessDpiAwareness(1)
 load_dotenv()
+
 pytesseract.pytesseract.tesseract_cmd = os.getenv(
     "TESSERACT_CMD", r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 )
@@ -60,6 +62,26 @@ LANG_MAP = {
 
 logger = Logger().get()
 
+# 1. Initialize the Environment
+# map_size is the maximum disk space allocated (e.g., 10MB)
+env = lmdb.open("./storage", map_size=10 * 1024 * 1024)
+
+
+def save_state(key, value):
+    # Data must be bytes. We serialize the value to JSON.
+    serialized_value = json.dumps(value).encode("utf-8")
+
+    with env.begin(write=True) as txn:
+        txn.put(key.encode("utf-8"), serialized_value)
+
+
+def get_state(key, default=None):
+    with env.begin() as txn:
+        raw_data = txn.get(key.encode("utf-8"))
+        if raw_data is None:
+            return default
+        return json.loads(raw_data.decode("utf-8"))
+
 
 class App(ctk.CTk, TkinterDnD.DnDWrapper):
     def __init__(self):
@@ -80,7 +102,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             os.path.join(os.path.dirname(__file__), "assets", "copy-dm.png"),
         )
 
-        self.title("OCR Desktop Tool")
+        self.title("The Owl - Translator (Sam·D·Leung)")
         self.geometry("400x600")
         self.minsize(400, 650)
         ctk.set_appearance_mode("system")
@@ -135,7 +157,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
                 win32process.AttachThreadInput(
                     this_thread, curr_foreground_thread, False
                 )
-        except Exception as e:
+        except Exception:
             # Fallback if the thread trick fails (e.g., trying to over-ride a system window)
             self.attributes("-topmost", True)
             self.after(10, lambda: self.attributes("-topmost", False))
@@ -180,9 +202,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.tab_frame.add("Image")
         self.tab_frame.add("Text")
 
-        # OCR Tab
+        # region OCR Tab
         self.ocr_frame = self.tab_frame.tab("Image")
-        # set height of frame
         self.ocr_frame.configure(height=220)
         self.placeholder_text = "Drag & Drop Image Here\nor press Ctrl+V to paste"
         self.img_zone = ctk.CTkLabel(
@@ -192,9 +213,9 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             corner_radius=15,
             text_color="gray",
         )
-        self.img_zone.pack(fill="x", pady=(0, 15))
         self.img_zone.drop_target_register(DND_FILES)
         self.img_zone.dnd_bind("<<Drop>>", self.handle_drop)
+        self.img_zone.place(anchor="nw", relheight=0.8, relwidth=1)
         self.bind("<Control-v>", self.handle_paste)
 
         # Button Frame at the bottom right corner of the OCR frame
@@ -203,15 +224,15 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         # anchor="se" ensures the corner of the frame itself is the attachment point
         self.btn_frame.place(relx=1.0, rely=1.0, anchor="se", x=-5, y=-5)
 
-        self.refresh_btn = ctk.CTkButton(
+        self.process_btn = ctk.CTkButton(
             self.btn_frame,
             text="🔄 Process",
             width=100,
             command=self.process_image,
             state="disabled",
         )
-        self.refresh_btn.pack(side="right", fill="x")
-        ToolTip(self.refresh_btn, "Process the image")
+        self.process_btn.pack(side="right", fill="x")
+        ToolTip(self.process_btn, "Process the image")
 
         self.clear_btn = ctk.CTkButton(
             self.btn_frame,
@@ -223,40 +244,49 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         )
         self.clear_btn.pack(side="right", fill="x", padx=(0, 5))
         ToolTip(self.clear_btn, "Clear the image and the result")
+        # endregion
 
-        # Text Editor for translation Tab
+        # region Translation Tab
         self.trans_frame = self.tab_frame.tab("Text")
         self.trans_frame.configure(height=220)
+
         self.trans_text_editor = ctk.CTkTextbox(
             self.trans_frame,
-            height=170,
             font=("Segoe UI", 13),
             undo=True,  # <--- CRITICAL: Enable the undo stack
             autoseparators=True,  # <--- Automatically creates a "checkpoint" on space/enter
         )
-        self.trans_text_editor.pack(fill="x", pady=(0, 0))
+        self.trans_text_editor.place(anchor="nw", relheight=0.8, relwidth=1)
         self.trans_text_editor.bind("<Control-v>", self.handle_paste)
+
+        self.btn_frame_2 = ctk.CTkFrame(self.trans_frame, fg_color="transparent")
+        self.btn_frame_2.place(relx=1.0, rely=1.0, anchor="se", x=-5, y=-5)
+
         self.translate_btn = ctk.CTkButton(
-            self.trans_frame,
+            self.btn_frame_2,
             text="🌐 Translate",
             command=self.translate_text,
             width=100,
         )
         ToolTip(self.translate_btn, "Translate the text in the text editor")
-        self.translate_btn.pack(side="right", padx=10, pady=0, fill="x")
+        self.translate_btn.pack(side="right", fill="x")
+        # endregion
 
-        self.trans_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
-        self.trans_frame.pack(fill="x", pady=10)
+        # region Translation Options
+        self.trans_opt_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        self.trans_opt_frame.pack(fill="x", pady=10)
+
         self.trans_cb_main = ctk.CTkCheckBox(
-            self.trans_frame, text="Translate to:", command=self._sync_trans_state
+            self.trans_opt_frame, text="Translate to:", command=self._sync_trans_state
         )
         self.trans_cb_main.pack(side="left", padx=(0, 10))
         self.lang_menu_main = ctk.CTkOptionMenu(
-            self.trans_frame,
+            self.trans_opt_frame,
             values=list(LANG_MAP.keys()),
             command=self._sync_lang_state,
         )
         self.lang_menu_main.pack(side="left", fill="x", expand=True)
+        # endregion
 
         self.result_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.result_frame.pack(fill="both", expand=True, pady=10)
@@ -283,22 +313,44 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.copy_btn.place(relx=0.98, rely=0.95, anchor="se")
         ToolTip(self.copy_btn, "Copy the result to the clipboard")
 
-        # Container for Action Buttons
-        self.action_btn_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
-        self.action_btn_frame.pack(fill="x")
+        # region Voice Section
+        self.voice_opt_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        self.voice_opt_frame.pack(fill="x", pady=10)
 
-        # Voice Button
+        # Display current voices (Optional: informative only)
+        current_voices = self._get_voice_list()
+        self.voice_var_main = ctk.StringVar(value=current_voices[0])
+
+        self.voice_menu_main = ctk.CTkOptionMenu(
+            self.voice_opt_frame,
+            values=current_voices,
+            dynamic_resizing=False,
+            variable=self.voice_var_main,
+            # command=self._sync_voice_state,
+        )
+        self.voice_menu_main.pack(side="left", fill="x", expand=True)
+        # Show the current voice selected
+        self.voice_tooltip = ToolTip(
+            self.voice_menu_main, f"Current voice: {self.voice_var_main.get()}"
+        )
+        self.voice_var_main.trace_add(
+            "write",
+            lambda *args: self.voice_tooltip.update_tip_text(
+                text=f"Current voice: {self.voice_var_main.get()}"
+            ),
+        )
+
         self.voice_btn = ctk.CTkButton(
-            self.action_btn_frame,
+            self.voice_opt_frame,
             text="🔊 Speak",
             command=self.toggle_speech,
             state="disabled",
-            height=45,
             width=100,
             fg_color="#9b59b6",
             hover_color="#8e44ad",
         )
-        self.voice_btn.pack(side="right")
+        self.voice_btn.pack(side="left", fill="x", padx=(5, 0))
+        # endregion
 
     def _setup_settings_modal(self):
         self.settings_modal = ctk.CTkFrame(
@@ -334,11 +386,11 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
         HotkeySettingRow(
             self.settings_panel,
-            label_text="Enable Hotkey for Application Invoke:",
+            label_text="The Hotkey for Application Invoke:",
             default_key="Q",
             is_enabled=state["hotkey_settings"]["application_invoke_hotkey"]["enable"],
             always_enabled=True,
-            tooltip_text="Invoke the application",
+            tooltip_text=None,
             hotkey_event_handler=application_invoke_hotkey_event_handler,
             is_enabled_var_trace=lambda enabled_var_value: state.__setitem__(
                 "hotkey_settings",
@@ -455,16 +507,6 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             install_btn, "Opens Windows Settings to download Cantonese, Putonghua, etc."
         )
 
-        # Display current voices (Optional: informative only)
-        current_voices = self._get_voice_list()
-        voice_info = f"Detected: {len(current_voices)} voices"
-        ctk.CTkLabel(
-            self.voice_management_frame,
-            text=voice_info,
-            font=("Arial", 10),
-            text_color="gray",
-        ).pack()
-
     # --- Logic ---
     def toggle_pin(self):
         state["is_pinned"] = not state["is_pinned"]
@@ -476,7 +518,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
     def open_settings(self):
         state["settings_open"] = True
         self.mask_layer = ctk.CTkFrame(
-            self, fg_color="#1a1a1a", bg_color="#1a1a1a", corner_radius=0
+            self, fg_color="transparent", bg_color="transparent", corner_radius=0
         )
         self.mask_layer.place(relx=0, rely=0, relwidth=1, relheight=1)
         self.settings_modal.place(
@@ -527,10 +569,12 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
     def clear_all(self):
         state["current_img"] = None
+        # First detach any existing image from the label, then drop the reference.
+        # Using a blank image string is safest for Tk's image handling.
+        self.img_zone.configure(image="", text=self.placeholder_text)
         self.display_img = None
-        self.img_zone.configure(image=self.display_img, text=self.placeholder_text)
         self.result_box.delete("1.0", "end")
-        self.refresh_btn.configure(state="disabled")
+        self.process_btn.configure(state="disabled")
         self.copy_btn.configure(state="disabled")
 
     def handle_drop(self, event):
@@ -547,9 +591,10 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             state["current_img"] = img
             self.process_image()
             # Check if app is in the foreground
-            if state["hotkey_settings"]["background_process_hotkey"][
-                "enable"
-            ] and not self.state("active"):
+            if (
+                state["hotkey_settings"]["background_process_hotkey"]["enable"]
+                and self.state() != "normal"
+            ):
                 self.copy_result()
 
     # --- OCR Logic ---
@@ -559,13 +604,9 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             self.result_box.insert("1.0", "⚙️ Processing...")
             thumb = state["current_img"].copy()
             thumb.thumbnail((500, 220))
-
-            # Store the CTkImage as a class attribute (self.display_img)
-            # This prevents garbage collection!
-            self.display_img = ctk.CTkImage(
-                light_image=thumb, dark_image=thumb, size=(thumb.width, thumb.height)
-            )
-
+            # Use a Tk PhotoImage and store it as an instance attribute
+            # to prevent garbage collection issues across multiple updates.
+            self.display_img = ImageTk.PhotoImage(thumb)
             self.img_zone.configure(image=self.display_img, text="")
 
             threading.Thread(target=self._ocr_worker, daemon=True).start()
@@ -701,7 +742,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
     def _update_results(self, text):
         self.result_box.delete("1.0", "end")
         self.result_box.insert("1.0", text if text else "No text found.")
-        self.refresh_btn.configure(state="normal")
+        self.process_btn.configure(state="normal")
         self.copy_btn.configure(state="normal" if text else "disabled")
         self.voice_btn.configure(state="normal" if text else "disabled")
 
@@ -742,8 +783,12 @@ if __name__ == "__main__":
     # 1. Initialize the app on the MAIN thread
     app = App()
 
-    # 2. Hide it immediately so it stays 'resident' in the background
-    app.withdraw()
+    # Check if we are debugging, if so, we can set the app to be visible
+    if "pydevd" in sys.modules or sys.gettrace() is not None:
+        app.deiconify()
+    else:
+        # 2. Hide it immediately so it stays 'resident' in the background
+        app.withdraw()
 
     # 3. Register the hotkey to just 'deiconify' (unhide) the app
     # We don't need a separate thread here because the app is already 'alive'
