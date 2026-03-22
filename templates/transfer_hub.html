@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Transfer Hub</title>
+    <style>
+      :root {
+        --bg: #0f1419;
+        --surface: #1a2332;
+        --border: #2d3a4d;
+        --text: #e7edf5;
+        --muted: #8b9cb3;
+        --accent: #3d8bfd;
+        --accent-hover: #5ba3ff;
+        --danger: #f87171;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        margin: 0;
+        min-height: 100vh;
+        line-height: 1.5;
+      }
+      .wrap {
+        max-width: 36rem;
+        margin: 0 auto;
+        padding: 2rem 1.25rem;
+      }
+      h1 {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin: 0 0 0.35rem;
+      }
+      .subtitle {
+        color: var(--muted);
+        font-size: 0.95rem;
+        margin: 0 0 1.5rem;
+      }
+      .tabs {
+        display: flex;
+        gap: 0;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 1.25rem;
+      }
+      .tabs button {
+        flex: 1;
+        padding: 0.65rem 1rem;
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        font-size: 0.95rem;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+      }
+      .tabs button:hover {
+        color: var(--text);
+      }
+      .tabs button[aria-selected="true"] {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+        font-weight: 600;
+      }
+      .panel {
+        display: none;
+      }
+      .panel.active {
+        display: block;
+      }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1.25rem;
+      }
+      label {
+        display: block;
+        font-size: 0.85rem;
+        color: var(--muted);
+        margin-bottom: 0.5rem;
+      }
+      input[type="file"] {
+        width: 100%;
+        font-size: 0.9rem;
+        color: var(--text);
+      }
+      .submit {
+        margin-top: 1rem;
+        width: 100%;
+        padding: 0.65rem 1rem;
+        border: none;
+        border-radius: 8px;
+        background: var(--accent);
+        color: #fff;
+        font-size: 0.95rem;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .submit:hover {
+        background: var(--accent-hover);
+      }
+      .submit:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .result {
+        margin-top: 1rem;
+        padding: 0.85rem 1rem;
+        border-radius: 8px;
+        font-size: 0.88rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+        display: none;
+      }
+      .result.show {
+        display: block;
+      }
+      .result.ok {
+        background: rgba(61, 139, 253, 0.12);
+        border: 1px solid var(--border);
+      }
+      .result.err {
+        background: rgba(248, 113, 113, 0.12);
+        border: 1px solid var(--danger);
+        color: #fecaca;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Transfer Hub</h1>
+      <p class="subtitle">
+        Send images or any file from another device to this computer.
+      </p>
+
+      <div class="tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          id="tab-images"
+          aria-selected="true"
+          aria-controls="panel-images"
+          data-panel="images"
+        >
+          Images
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="tab-files"
+          aria-selected="false"
+          aria-controls="panel-files"
+          data-panel="files"
+        >
+          Files
+        </button>
+      </div>
+
+      <div
+        id="panel-images"
+        class="panel active"
+        role="tabpanel"
+        aria-labelledby="tab-images"
+      >
+        <div class="card">
+          <form
+            id="form-images"
+            action="/upload/image"
+            method="post"
+            enctype="multipart/form-data"
+          >
+            <label for="file-images">Image file</label>
+            <input
+              id="file-images"
+              type="file"
+              name="file"
+              accept="image/*"
+              required
+            />
+            <button type="submit" class="submit">Upload image</button>
+          </form>
+          <div id="result-images" class="result" aria-live="polite"></div>
+        </div>
+      </div>
+
+      <div
+        id="panel-files"
+        class="panel"
+        role="tabpanel"
+        aria-labelledby="tab-files"
+      >
+        <div class="card">
+          <form
+            id="form-files"
+            action="/upload/file"
+            method="post"
+            enctype="multipart/form-data"
+          >
+            <label for="file-files">Any file (PDF, Office, etc.)</label>
+            <input id="file-files" type="file" name="file" required />
+            <button type="submit" class="submit">Upload file</button>
+          </form>
+          <div id="result-files" class="result" aria-live="polite"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        var tabButtons = document.querySelectorAll(".tabs [data-panel]");
+        var panels = {
+          images: document.getElementById("panel-images"),
+          files: document.getElementById("panel-files"),
+        };
+
+        function showPanel(name) {
+          Object.keys(panels).forEach(function (key) {
+            panels[key].classList.toggle("active", key === name);
+          });
+          tabButtons.forEach(function (btn) {
+            var sel = btn.getAttribute("data-panel") === name;
+            btn.setAttribute("aria-selected", sel ? "true" : "false");
+          });
+        }
+
+        tabButtons.forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            showPanel(btn.getAttribute("data-panel"));
+          });
+        });
+
+        function bindForm(formId, resultId) {
+          var form = document.getElementById(formId);
+          var out = document.getElementById(resultId);
+          form.addEventListener("submit", function (e) {
+            e.preventDefault();
+            out.className = "result";
+            out.textContent = "";
+            var btn = form.querySelector(".submit");
+            btn.disabled = true;
+            var fd = new FormData(form);
+            fetch(form.action, { method: "POST", body: fd })
+              .then(function (res) {
+                return res.json().then(function (data) {
+                  return { ok: res.ok, data: data };
+                });
+              })
+              .then(function (r) {
+                out.classList.add("show", r.ok ? "ok" : "err");
+                if (r.ok) {
+                  if (r.data.ocr_result !== undefined) {
+                    out.textContent =
+                      r.data.message +
+                      "\nSaved as: " +
+                      r.data.filename +
+                      "\n\n" +
+                      r.data.ocr_result;
+                  } else {
+                    out.textContent =
+                      r.data.message +
+                      "\nSaved as: " +
+                      r.data.filename +
+                      "\nSize: " +
+                      (r.data.size_bytes || 0) +
+                      " bytes";
+                  }
+                } else {
+                  out.textContent = r.data.error || "Upload failed.";
+                }
+              })
+              .catch(function () {
+                out.classList.add("show", "err");
+                out.textContent = "Network error.";
+              })
+              .finally(function () {
+                btn.disabled = false;
+              });
+          });
+        }
+
+        bindForm("form-images", "result-images");
+        bindForm("form-files", "result-files");
+      })();
+    </script>
+  </body>
+</html>
