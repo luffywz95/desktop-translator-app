@@ -20,6 +20,7 @@ class ToolTip:
         y = y + self.widget.winfo_rooty() + 25
         self.tip_window = tw = ctk.CTkToplevel(self.widget)
         tw.wm_overrideredirect(True)
+        tw.attributes("-topmost", True)
         tw.wm_geometry(f"+{x}+{y}")
         # Also hide when the mouse leaves the tooltip itself or when it is clicked
         tw.bind("<Leave>", lambda e: self.hide_tip())

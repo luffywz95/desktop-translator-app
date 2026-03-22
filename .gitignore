@@ -1,5 +1,8 @@
 logs/
 __pycache__/
 *- Shortcut.lnk
+.env
 
 backup/
+storage/
+received/

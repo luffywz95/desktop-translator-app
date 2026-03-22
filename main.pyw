@@ -1,6 +1,9 @@
 import os
 import customtkinter as ctk
-from tkinter import messagebox
+from io import BytesIO
+from tkinter import Menu, filedialog, messagebox
+import urllib.error
+import urllib.request
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from tkinterdnd2.TkinterDnD import _require as _require_tkdnd
 from PIL import ImageGrab, Image, ImageOps, ImageTk
@@ -16,12 +19,16 @@ import win32gui
 import win32process
 import win32api
 import win32con
-import lmdb
-import json
 
 from components.tooltip import ToolTip
 from components.hot_key_settings_row import HotkeySettingRow
 from components.logger import Logger
+
+from utils.persistence import (
+    StorageEngine,
+    default_settings,
+    default_lang_map,
+)
 
 # --- 1. System & Engine Setup ---
 ctypes.windll.shcore.SetProcessDpiAwareness(1)
@@ -31,56 +38,14 @@ pytesseract.pytesseract.tesseract_cmd = os.getenv(
     "TESSERACT_CMD", r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 )
 
-state = {
-    "settings_open": False,
-    "is_pinned": False,
-    "enable_translation": False,
-    "target_lang": "English",
-    "hotkey_settings": {
-        "background_process_hotkey": {
-            "enable": True,
-            "hotkey": "ctrl+shift+x",
-        },
-        "application_invoke_hotkey": {
-            "enable": True,
-            "hotkey": "ctrl+shift+q",
-        },
-    },
-    "enable_focus_dim": True,
-    "idle_opacity": 1,
-    "current_img": None,
-    "ocr_langs": "chi_sim+chi_sim_vert+chi_tra+chi_tra_vert+eng+kor+jpn+vie",
-}
+settings = None
+LANG_MAP = None
 
-LANG_MAP = {
-    "English": {"trans_lang": "en", "tts_lang": ["en-US"]},
-    "Chinese (Simplified)": {"trans_lang": "zh-CN", "tts_lang": ["zh-CN", "zh-Hans"]},
-    "Chinese (Traditional)": {"trans_lang": "zh-TW", "tts_lang": ["zh-TW", "zh-HK"]},
-    "Japanese": {"trans_lang": "ja", "tts_lang": ["ja-JP"]},
-    "Korean": {"trans_lang": "ko", "tts_lang": ["ko-KR"]},
-}
+state_helper = StorageEngine()
+settings = state_helper.bind("settings", default_settings)
+LANG_MAP = state_helper.bind("lang_map", default_lang_map)
 
 logger = Logger().get()
-
-# 1. Initialize the Environment
-# map_size is the maximum disk space allocated (e.g., 10MB)
-env = lmdb.open("./storage", map_size=10 * 1024 * 1024)
-
-
-def save_state(key, value):
-    # Data must be bytes. We serialize the value to JSON.
-    serialized_value = json.dumps(value).encode("utf-8")
-
-    with env.begin(write=True) as txn:
-        txn.put(key.encode("utf-8"), serialized_value)
-
-
-def get_state(key, default=None):
-    with env.begin() as txn:
-        raw_data = txn.get(key.encode("utf-8"))
-        if raw_data is None:
-            return default
-        return json.loads(raw_data.decode("utf-8"))
 
 
 class App(ctk.CTk, TkinterDnD.DnDWrapper):
@@ -122,6 +87,22 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
         # Initialize TTS Engine
         self.is_speaking = False
+
+    def withdraw(self):
+        """Hide window and stop Transfer Hub — no background upload server when UI is hidden."""
+        from utils.transfer_hub_runner import stop_transfer_hub_server
+
+        stop_transfer_hub_server()
+        super().withdraw()
+
+    def deiconify(self):
+        """Show window and start Transfer Hub only while the user can see the app."""
+        super().deiconify()
+        from utils.transfer_hub_runner import start_transfer_hub_server
+
+        start_transfer_hub_server(
+            allow_lan=settings.get("transfer_hub_allow_lan", False),
+        )
 
     def _load_icon(self, light_path, dark_path, size=(20, 20)):
         return ctk.CTkImage(
@@ -192,20 +173,95 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         )
         self.settings_btn.pack(side="right", padx=10)
 
+    def _restart_transfer_hub_if_visible(self):
+        if not self.winfo_viewable():
+            return
+        from utils.transfer_hub_runner import restart_transfer_hub_server
+
+        restart_transfer_hub_server(
+            allow_lan=settings.get("transfer_hub_allow_lan", False),
+        )
+
+    def _on_transfer_hub_lan_toggle(self):
+        want = self.transfer_hub_lan_var.get()
+        if want:
+            if sys.platform == "win32":
+                from utils.windows_firewall import (
+                    add_transfer_hub_rule_elevated,
+                    inbound_tcp_port_allowed,
+                    wait_for_inbound_tcp_allowed,
+                )
+
+                if not inbound_tcp_port_allowed(5000):
+                    if not messagebox.askyesno(
+                        "Windows Firewall",
+                        "To receive uploads from phones and other PCs on your network, "
+                        "Windows Firewall needs an inbound rule that allows TCP port 5000.\n\n"
+                        "Allow this app to add that rule? (Windows will ask for administrator "
+                        "approval on the next step.)",
+                    ):
+                        self.transfer_hub_lan_var.set(False)
+                        return
+                    if not add_transfer_hub_rule_elevated(5000):
+                        messagebox.showerror(
+                            "Firewall",
+                            "Could not start the firewall rule setup.",
+                        )
+                        self.transfer_hub_lan_var.set(False)
+                        return
+                    messagebox.showinfo(
+                        "Firewall",
+                        "If a Windows administrator prompt appeared, approve it to add the rule.\n\n"
+                        "Click OK when done so we can verify the connection.",
+                    )
+                    if not wait_for_inbound_tcp_allowed(5000):
+                        messagebox.showwarning(
+                            "Firewall",
+                            "Could not confirm an inbound allow rule for TCP port 5000. "
+                            "If you cancelled the administrator prompt, try again. "
+                            "Otherwise add the rule manually in Windows Defender Firewall.",
+                        )
+                        self.transfer_hub_lan_var.set(False)
+                        return
+            settings["transfer_hub_allow_lan"] = True
+        else:
+            settings["transfer_hub_allow_lan"] = False
+        self._restart_transfer_hub_if_visible()
+
     def _setup_main_ui(self):
         self.main_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.main_frame.pack(fill="both", expand=True, padx=20, pady=(0, 10))
 
         # Create tabs with two tabs: OCR and Text Editor for translation (tab button on the bottom of the tab frame)
-        self.tab_frame = ctk.CTkTabview(self.main_frame)
+        # corner_radius=0, border_width=0 so tab content aligns with main_frame width like trans_opt / result below
+        # (default tabview inset uses max(corner_radius, border_width) as inner padx/pady on tab bodies).
+        self.tab_frame = ctk.CTkTabview(
+            self.main_frame,
+            height=260,
+            corner_radius=0,
+            border_width=0,
+        )
         self.tab_frame.pack(fill="both", expand=True, padx=0, pady=0)
         self.tab_frame.add("Image")
         self.tab_frame.add("Text")
 
-        # region OCR Tab
+        # region OCR Tab — grid: preview expands (row 0); button bar pinned to bottom of ocr_frame (row 1)
         self.ocr_frame = self.tab_frame.tab("Image")
-        self.ocr_frame.configure(height=220)
+        self.ocr_frame.grid_rowconfigure(0, weight=1)
+        self.ocr_frame.grid_columnconfigure(0, weight=1)
         self.placeholder_text = "Drag & Drop Image Here\nor press Ctrl+V to paste"
+
+        self.choose_fail_label = ctk.CTkLabel(
+            self.ocr_frame,
+            text="",
+            font=("Segoe UI", 10),
+            text_color="#e74c3c",
+            wraplength=320,
+            anchor="nw",
+            justify="left",
+            fg_color="transparent",
+        )
+
         self.img_zone = ctk.CTkLabel(
             self.ocr_frame,
             text=self.placeholder_text,
@@ -215,40 +271,129 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         )
         self.img_zone.drop_target_register(DND_FILES)
         self.img_zone.dnd_bind("<<Drop>>", self.handle_drop)
-        self.img_zone.place(anchor="nw", relheight=0.8, relwidth=1)
         self.bind("<Control-v>", self.handle_paste)
 
-        # Button Frame at the bottom right corner of the OCR frame
-        self.btn_frame = ctk.CTkFrame(self.ocr_frame, fg_color="transparent")
-        # relx/rely = 1.0 means 100% of the width/height (far right, far bottom)
-        # anchor="se" ensures the corner of the frame itself is the attachment point
-        self.btn_frame.place(relx=1.0, rely=1.0, anchor="se", x=-5, y=-5)
+        self.ocr_bottom = ctk.CTkFrame(self.ocr_frame, fg_color="transparent")
+        self.ocr_bottom.grid_columnconfigure(0, weight=1)
+        self.ocr_bottom.grid_columnconfigure(1, weight=0)
 
+        self.url_row = ctk.CTkFrame(self.ocr_bottom, fg_color="transparent")
+        self.url_entry = ctk.CTkEntry(
+            self.url_row,
+            placeholder_text="http://www.example.com/examplefile.pdf",
+            placeholder_text_color=("#4A90E2", "#6AB0FF"),
+            height=30,
+            font=("Segoe UI", 12),
+            corner_radius=6,
+            border_width=1,
+        )
+        self.url_entry.pack(side="left", fill="x", expand=True)
+        self.url_entry.bind("<Return>", lambda e: self._load_image_from_url_async())
+        self.url_load_btn = ctk.CTkButton(
+            self.url_row,
+            text="Load",
+            width=64,
+            height=30,
+            corner_radius=8,
+            font=("Segoe UI", 12, "bold"),
+            command=self._load_image_from_url_async,
+        )
+        self.url_load_btn.pack(side="left", padx=(8, 0))
+
+        self.choose_split_outer = ctk.CTkFrame(self.ocr_bottom, fg_color="transparent")
+        self.choose_file_main_btn = ctk.CTkButton(
+            self.choose_split_outer,
+            text="📄 Choose file",
+            width=120,
+            height=32,
+            corner_radius=8,
+            font=("Segoe UI", 13, "bold"),
+            command=self._choose_from_device,
+            fg_color=("#3b8ed0", "#1f538d"),
+            hover_color=("#36719f", "#144870"),
+            text_color=("white", "white"),
+        )
+        self.choose_file_main_btn.pack(side="left")
+        ctk.CTkFrame(
+            self.choose_split_outer,
+            width=1,
+            fg_color=("#93c4e8", "#2a4d73"),
+        ).pack(side="left", fill="y", pady=4)
+        self.choose_file_drop_btn = ctk.CTkButton(
+            self.choose_split_outer,
+            text="▾",
+            width=36,
+            height=32,
+            corner_radius=8,
+            font=("Segoe UI", 13, "bold"),
+            fg_color=("#6d6d6d", "#3d3d3d"),
+            hover_color=("#5c5c5c", "#4d4d4d"),
+            text_color=("white", "white"),
+            command=self._popup_choose_menu,
+        )
+        self.choose_file_drop_btn.pack(side="left")
+
+        self.btn_frame = ctk.CTkFrame(self.ocr_bottom, fg_color="transparent")
         self.process_btn = ctk.CTkButton(
             self.btn_frame,
             text="🔄 Process",
-            width=100,
+            width=80,
+            height=32,
             command=self.process_image,
             state="disabled",
         )
+        self.process_btn.configure(corner_radius=8, font=("Segoe UI", 13, "bold"))
         self.process_btn.pack(side="right", fill="x")
         ToolTip(self.process_btn, "Process the image")
 
-        self.clear_btn = ctk.CTkButton(
+        self.reset_btn = ctk.CTkButton(
             self.btn_frame,
-            text="🗑️ Clear",
-            width=100,
+            text="🔃 Reset",
+            width=80,
+            height=32,
             command=self.clear_all,
             fg_color="#e74c3c",
             hover_color="#c0392b",
         )
-        self.clear_btn.pack(side="right", fill="x", padx=(0, 5))
-        ToolTip(self.clear_btn, "Clear the image and the result")
+        self.reset_btn.configure(corner_radius=8, font=("Segoe UI", 13, "bold"))
+        self.reset_btn.pack(side="right", fill="x", padx=(0, 5))
+        ToolTip(self.reset_btn, "Reset the image and the result")
+
+        self._choose_url_visible = False
+        self.choose_split_outer.grid(row=1, column=0, sticky="w", pady=(2, 0))
+        self.btn_frame.grid(row=1, column=1, sticky="e", padx=(16, 0), pady=(2, 0))
+
+        self.img_zone.grid(row=0, column=0, sticky="nsew")
+        self.ocr_bottom.grid(row=1, column=0, sticky="ew", pady=(4, 8))
+
+        self._choose_menu = Menu(self, tearoff=0)
+        self._choose_menu.add_command(
+            label="From device", command=self._choose_from_device
+        )
+        self._choose_menu.add_command(
+            label="From Dropbox",
+            command=lambda: self._choose_from_cloud("Dropbox"),
+        )
+        self._choose_menu.add_command(
+            label="From Google Drive",
+            command=lambda: self._choose_from_cloud("Google Drive"),
+        )
+        self._choose_menu.add_command(
+            label="From OneDrive",
+            command=lambda: self._choose_from_cloud("OneDrive"),
+        )
+        self._choose_menu.add_command(
+            label="From URL", command=self._choose_from_url_menu
+        )
+        self._choose_menu.add_command(
+            label="From Clipboard", command=self._choose_from_clipboard
+        )
+        ToolTip(self.choose_file_main_btn, "Pick a file from this PC (or use the menu)")
+        ToolTip(self.choose_file_drop_btn, "More sources")
         # endregion
 
-        # region Translation Tab
+        # region Translation Tab (same relheight=0.8 main area as Image tab)
         self.trans_frame = self.tab_frame.tab("Text")
-        self.trans_frame.configure(height=220)
 
         self.trans_text_editor = ctk.CTkTextbox(
             self.trans_frame,
@@ -266,10 +411,11 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             self.btn_frame_2,
             text="🌐 Translate",
             command=self.translate_text,
-            width=100,
+            width=80,
         )
-        ToolTip(self.translate_btn, "Translate the text in the text editor")
+        self.translate_btn.configure(corner_radius=8, font=("Segoe UI", 13, "bold"))
         self.translate_btn.pack(side="right", fill="x")
+        ToolTip(self.translate_btn, "Translate the text in the text editor")
         # endregion
 
         # region Translation Options
@@ -280,6 +426,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             self.trans_opt_frame, text="Translate to:", command=self._sync_trans_state
         )
         self.trans_cb_main.pack(side="left", padx=(0, 10))
+
         self.lang_menu_main = ctk.CTkOptionMenu(
             self.trans_opt_frame,
             values=list(LANG_MAP.keys()),
@@ -288,6 +435,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.lang_menu_main.pack(side="left", fill="x", expand=True)
         # endregion
 
+        # region Result Section
         self.result_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.result_frame.pack(fill="both", expand=True, pady=10)
 
@@ -312,31 +460,47 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         )
         self.copy_btn.place(relx=0.98, rely=0.95, anchor="se")
         ToolTip(self.copy_btn, "Copy the result to the clipboard")
+        # endregion
 
         # region Voice Section
         self.voice_opt_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.voice_opt_frame.pack(fill="x", pady=10)
 
         # Display current voices (Optional: informative only)
-        current_voices = self._get_voice_list()
-        self.voice_var_main = ctk.StringVar(value=current_voices[0])
+        self.current_voices = self._get_voice_list()
 
+        self.selected_voices_dict = {
+            voice.id: f"{voice.name} ({voice.gender}, {voice.age})"
+            for voice in filter(
+                lambda x: [
+                    x.languages.__contains__(v)
+                    for v in LANG_MAP[settings["target_lang"]]["tts_lang"]
+                ].__contains__(True),
+                self.current_voices,
+            )
+        }
+
+        self.voice_var_main = ctk.StringVar(
+            value=list(self.selected_voices_dict.values())[0],
+        )
         self.voice_menu_main = ctk.CTkOptionMenu(
             self.voice_opt_frame,
-            values=current_voices,
+            values=list(self.selected_voices_dict.values()),
             dynamic_resizing=False,
             variable=self.voice_var_main,
             # command=self._sync_voice_state,
         )
         self.voice_menu_main.pack(side="left", fill="x", expand=True)
+
         # Show the current voice selected
         self.voice_tooltip = ToolTip(
             self.voice_menu_main, f"Current voice: {self.voice_var_main.get()}"
         )
+
         self.voice_var_main.trace_add(
             "write",
-            lambda *args: self.voice_tooltip.update_tip_text(
-                text=f"Current voice: {self.voice_var_main.get()}"
+            lambda value: self.voice_tooltip.update_tip_text(
+                text=f"Current voice: {value}"
             ),
         )
 
@@ -345,10 +509,11 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             text="🔊 Speak",
             command=self.toggle_speech,
             state="disabled",
-            width=100,
+            width=80,
             fg_color="#9b59b6",
             hover_color="#8e44ad",
         )
+        self.voice_btn.configure(corner_radius=8, font=("Segoe UI", 13, "bold"))
         self.voice_btn.pack(side="left", fill="x", padx=(5, 0))
         # endregion
 
@@ -373,43 +538,74 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
         # region Hotkey Settings
         # Application Invoke Hotkey
-        def application_invoke_hotkey_event_handler(event=None):
-            state["hotkey_settings"]["application_invoke_hotkey"]["hotkey"] = (
-                "ctrl+shift+" + event.widget.get().lower()
-            )
-            if self._hotkey_handle_application_invoke:
-                keyboard.remove_hotkey(self._hotkey_handle_application_invoke)
-            self._hotkey_handle_application_invoke = keyboard.add_hotkey(
-                state["hotkey_settings"]["application_invoke_hotkey"]["hotkey"],
-                lambda: self.after(0, show_app_request),
-            )
-
-        HotkeySettingRow(
+        self.application_invoke_hotkey_row = HotkeySettingRow(
             self.settings_panel,
             label_text="The Hotkey for Application Invoke:",
-            default_key="Q",
-            is_enabled=state["hotkey_settings"]["application_invoke_hotkey"]["enable"],
+            default_key=settings["hotkey_settings"]["application_invoke_hotkey"][
+                "hotkey"
+            ][-1].upper(),
+            is_enabled=settings["hotkey_settings"]["application_invoke_hotkey"][
+                "enable"
+            ],
             always_enabled=True,
             tooltip_text=None,
-            hotkey_event_handler=application_invoke_hotkey_event_handler,
-            is_enabled_var_trace=lambda enabled_var_value: state.__setitem__(
-                "hotkey_settings",
-                "application_invoke_hotkey",
-                "enable",
-                enabled_var_value,
-            ),
-        ).pack(pady=(10, 0), padx=30, fill="x")
+            # is_enabled_var_trace=lambda enabled_var_value: settings.__setitem__(
+            #     "hotkey_settings",
+            #     "application_invoke_hotkey",
+            #     "enable",
+            #     enabled_var_value,
+            # ),
+        )
+        self.application_invoke_hotkey_row.pack(pady=(10, 0), padx=30, fill="x")
 
         # Background Process Hotkey
-        HotkeySettingRow(
+        self.background_process_hotkey_row = HotkeySettingRow(
             self.settings_panel,
             label_text="Enable Hotkey for Background Process:",
-            default_key="X",
-            is_enabled=state["hotkey_settings"]["background_process_hotkey"]["enable"],
+            default_key=settings["hotkey_settings"]["background_process_hotkey"][
+                "hotkey"
+            ][-1].upper(),
+            is_enabled=settings["hotkey_settings"]["background_process_hotkey"][
+                "enable"
+            ],
             always_enabled=False,
             tooltip_text="Instant process the recently captured image, the result will be copied to the clipboard",
-            hotkey_event_handler=None,
-        ).pack(pady=(10, 10), padx=30, fill="x")
+        )
+        self.background_process_hotkey_row.pack(pady=(10, 10), padx=30, fill="x")
+        # endregion
+
+        ctk.CTkFrame(
+            self.settings_panel,
+            height=2,
+            fg_color=("#dbdbdb", "#3d3d3d"),
+            border_width=0,
+        ).pack(fill="x", padx=15, pady=10)
+
+        # region Transfer Hub
+        self.transfer_hub_lan_var = ctk.BooleanVar(
+            value=settings.get("transfer_hub_allow_lan", False),
+        )
+        th_row = ctk.CTkFrame(self.settings_panel, fg_color="transparent")
+        th_row.pack(fill="x", padx=30, pady=(0, 8))
+        ctk.CTkLabel(
+            th_row,
+            text="Enable Transfer Hub",
+            font=("Segoe UI", 13, "bold"),
+        ).pack(side="left")
+
+        self.transfer_hub_lan_switch = ctk.CTkSwitch(
+            th_row,
+            text="",
+            width=44,
+            variable=self.transfer_hub_lan_var,
+            command=self._on_transfer_hub_lan_toggle,
+        )
+        self.transfer_hub_lan_switch.pack(side="right", padx=(8, 0))
+        ToolTip(
+            self.transfer_hub_lan_switch,
+            "When on, Transfer Hub listens on your network (TCP 5000). "
+            "Windows Firewall must allow inbound traffic on this port.",
+        )
         # endregion
 
         ctk.CTkFrame(
@@ -420,12 +616,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         ).pack(fill="x", padx=15, pady=10)
 
         # region Opacity Toggles
-        self.dim_var = ctk.BooleanVar(value=state["enable_focus_dim"])
-        # Add this "trace" to link the variable back to the dictionary
-        self.dim_var.trace_add(
-            "write",
-            lambda *args: state.__setitem__("enable_focus_dim", self.dim_var.get()),
-        )
+        self.dim_var = ctk.BooleanVar(value=settings["enable_focus_dim"])
         ctk.CTkCheckBox(
             self.settings_panel, text="Auto-dim on Focus Lost", variable=self.dim_var
         ).pack(pady=(10, 0), padx=30, anchor="w")
@@ -433,10 +624,12 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         ctk.CTkLabel(self.settings_panel, text="Focus-out Opacity Level:").pack(
             pady=(10, 0), padx=30, anchor="w"
         )
+
+        self.opacity_val = ctk.DoubleVar(value=settings["idle_opacity"])
         self.opacity_slider = ctk.CTkSlider(
-            self.settings_panel, from_=0.1, to=1.0, command=self._update_opacity_val
+            self.settings_panel, from_=0.1, to=1.0, variable=self.opacity_val
         )
-        self.opacity_slider.set(state["idle_opacity"])
+        self.opacity_slider.set(settings["idle_opacity"])
         self.opacity_slider.pack(pady=10, padx=30, fill="x")
         # endregion
 
@@ -472,7 +665,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             corner_radius=12,
             fg_color="#2ecc71",
             hover_color="#27ae60",
-            command=self.close_settings,
+            command=lambda: self.close_settings(save=True),
         )
         self.save_btn.pack(fill="x", padx=25, pady=(10, 20))
 
@@ -509,14 +702,15 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
     # --- Logic ---
     def toggle_pin(self):
-        state["is_pinned"] = not state["is_pinned"]
-        self.attributes("-topmost", state["is_pinned"])
+        settings["is_pinned"] = not settings["is_pinned"]
+        self.attributes("-topmost", settings["is_pinned"])
         self.pin_btn.configure(
-            fg_color="#3498db" if state["is_pinned"] else "transparent"
+            fg_color="#3498db" if settings["is_pinned"] else "transparent"
         )
 
     def open_settings(self):
-        state["settings_open"] = True
+        settings["settings_open"] = True
+
         self.mask_layer = ctk.CTkFrame(
             self, fg_color="transparent", bg_color="transparent", corner_radius=0
         )
@@ -526,49 +720,125 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         )
         self.settings_modal.lift()
 
-    def close_settings(self):
-        state["settings_open"] = False
+        self.application_invoke_hotkey_row.key_input.delete(0, "end")
+        self.application_invoke_hotkey_row.key_input.insert(
+            0,
+            settings["hotkey_settings"]["application_invoke_hotkey"]["hotkey"][
+                -1
+            ].upper(),
+        )
+
+        self.background_process_hotkey_row.enabled_var.set(
+            settings["hotkey_settings"]["background_process_hotkey"]["enable"]
+        )
+        self.background_process_hotkey_row.key_input.delete(0, "end")
+        self.background_process_hotkey_row.key_input.insert(
+            0,
+            settings["hotkey_settings"]["background_process_hotkey"]["hotkey"][
+                -1
+            ].upper(),
+        )
+
+        self.dim_var.set(settings["enable_focus_dim"])
+        self.opacity_val.set(settings["idle_opacity"])
+        self.transfer_hub_lan_var.set(settings.get("transfer_hub_allow_lan", False))
+
+    def close_settings(self, save=False):
+        settings["settings_open"] = False
+
+        if save:
+            settings.begin_batch()
+            try:
+                application_invoke_hotkey = (
+                    self.application_invoke_hotkey_row.key_input.get().lower()
+                )
+                if application_invoke_hotkey:
+                    settings["hotkey_settings"]["application_invoke_hotkey"][
+                        "hotkey"
+                    ] = "ctrl+shift+" + application_invoke_hotkey
+                    if self._hotkey_handle_application_invoke:
+                        keyboard.remove_hotkey(self._hotkey_handle_application_invoke)
+                    self._hotkey_handle_application_invoke = keyboard.add_hotkey(
+                        settings["hotkey_settings"]["application_invoke_hotkey"][
+                            "hotkey"
+                        ],
+                        lambda: self.after(0, show_app_request),
+                    )
+
+                settings["hotkey_settings"]["background_process_hotkey"]["enable"] = (
+                    self.background_process_hotkey_row.enabled_var.get()
+                )
+
+                background_process_hotkey = (
+                    self.background_process_hotkey_row.key_input.get().lower()
+                )
+                if background_process_hotkey:
+                    settings["hotkey_settings"]["background_process_hotkey"][
+                        "hotkey"
+                    ] = "ctrl+shift+" + background_process_hotkey
+
+                settings["enable_focus_dim"] = self.dim_var.get()
+                settings["idle_opacity"] = self.opacity_val.get()
+                settings["transfer_hub_allow_lan"] = self.transfer_hub_lan_var.get()
+            finally:
+                settings.commit()
+
         if self.mask_layer:
             self.mask_layer.destroy()
         if self.settings_modal:
             self.settings_modal.place_forget()
         self.attributes("-alpha", 1.0)
 
-    def _update_opacity_val(self, val):
-        state["idle_opacity"] = float(val)
-
     def _on_focus_in(self, event=None):
         self.attributes("-alpha", 1.0)
 
     def _on_focus_out(self, event=None):
-        if not state["is_pinned"]:
+        if not settings["is_pinned"]:
             return
-        if state["enable_focus_dim"] and not state["settings_open"]:
-            self.attributes("-alpha", state["idle_opacity"])
+        if settings["enable_focus_dim"] and not settings["settings_open"]:
+            self.attributes("-alpha", settings["idle_opacity"])
 
     def _sync_trans_state(self):
-        state["enable_translation"] = self.trans_cb_main.get()
-        if state["current_img"]:
+        settings["enable_translation"] = self.trans_cb_main.get()
+        if settings["current_img"]:
             self.process_image()
 
     def _sync_lang_state(self, choice):
-        state["target_lang"] = choice
-        if state["enable_translation"] and state["current_img"]:
+        settings["target_lang"] = choice
+        if settings["enable_translation"] and settings["current_img"]:
             self.process_image()
+
+        self.selected_voices_dict = {
+            voice.id: f"{voice.name} ({voice.gender}, {voice.age})"
+            for voice in filter(
+                lambda x: [
+                    x.languages.__contains__(v)
+                    for v in LANG_MAP[settings["target_lang"]]["tts_lang"]
+                ].__contains__(True),
+                self.current_voices,
+            )
+        }
+
+        self.voice_menu_main.configure(
+            values=list(self.selected_voices_dict.values()),
+        )
+        self.voice_var_main.set(
+            self.selected_voices_dict[0].value,
+        )
 
     def _bind_global_hotkey(self):
         if self._hotkey_handle_capture:
             keyboard.remove_hotkey(self._hotkey_handle_capture)
 
         # Process the image via hotkey
-        if state["hotkey_settings"]["background_process_hotkey"]["enable"]:
+        if settings["hotkey_settings"]["background_process_hotkey"]["enable"]:
             self._hotkey_handle_capture = keyboard.add_hotkey(
-                state["hotkey_settings"]["background_process_hotkey"]["hotkey"],
+                settings["hotkey_settings"]["background_process_hotkey"]["hotkey"],
                 lambda: self.after(0, self.handle_paste),
             )
 
     def clear_all(self):
-        state["current_img"] = None
+        settings["current_img"] = None
         # First detach any existing image from the label, then drop the reference.
         # Using a blank image string is safest for Tk's image handling.
         self.img_zone.configure(image="", text=self.placeholder_text)
@@ -576,10 +846,190 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.result_box.delete("1.0", "end")
         self.process_btn.configure(state="disabled")
         self.copy_btn.configure(state="disabled")
+        self._hide_url_entry()
+        self._clear_choose_fail()
+        if hasattr(self, "url_entry"):
+            self.url_entry.delete(0, "end")
+
+    def _clear_choose_fail(self):
+        if hasattr(self, "choose_fail_label"):
+            self.choose_fail_label.configure(text="")
+            if self.choose_fail_label.winfo_ismapped():
+                self.choose_fail_label.grid_remove()
+
+    def _show_choose_fail(self, message: str):
+        if not hasattr(self, "choose_fail_label"):
+            return
+        short = (message or "").strip()
+        if len(short) > 160:
+            short = short[:157] + "..."
+        self.choose_fail_label.configure(text=short)
+        if self.choose_fail_label.winfo_ismapped():
+            return
+        self.choose_fail_label.grid(row=0, column=0, sticky="nw", padx=10, pady=6)
+        self.choose_fail_label.lift(self.img_zone)
+
+    def _hide_url_entry(self):
+        if not getattr(self, "_choose_url_visible", False):
+            return
+        self._choose_url_visible = False
+        self.url_row.grid_remove()
+
+    def _show_url_entry(self):
+        if self._choose_url_visible:
+            return
+        self._choose_url_visible = True
+        self.url_row.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 4))
+        self.after(50, lambda: self.url_entry.focus_set())
+
+    def _popup_choose_menu(self):
+        self.update_idletasks()
+        try:
+            self._choose_menu.tk_popup(
+                self.choose_file_drop_btn.winfo_rootx(),
+                self.choose_file_drop_btn.winfo_rooty()
+                + self.choose_file_drop_btn.winfo_height(),
+            )
+        finally:
+            try:
+                self._choose_menu.grab_release()
+            except Exception:
+                pass
+
+    def _cloud_folder_candidates(self, name: str):
+        home = os.path.expanduser("~")
+        if name == "Dropbox":
+            return [os.path.join(home, "Dropbox")]
+        if name == "Google Drive":
+            return [
+                os.path.join(home, "Google Drive"),
+                os.path.join(home, "My Drive"),
+            ]
+        if name == "OneDrive":
+            return [os.path.join(home, "OneDrive")]
+        return []
+
+    def _load_image_path(self, path: str):
+        try:
+            settings["current_img"] = Image.open(path)
+            self._clear_choose_fail()
+            self.process_image()
+        except Exception as e:
+            logger.error(f"Open file failed: {e}")
+            self._show_choose_fail(f"Could not open file: {e}")
+
+    def _choose_from_device(self):
+        self._hide_url_entry()
+        path = filedialog.askopenfilename(
+            parent=self,
+            title="Choose image or file",
+            filetypes=[
+                ("Images", "*.png *.jpg *.jpeg *.gif *.bmp *.webp *.tiff *.tif"),
+                ("All files", "*.*"),
+            ],
+        )
+        if path:
+            self._load_image_path(path)
+
+    def _choose_from_cloud(self, name: str):
+        self._hide_url_entry()
+        for d in self._cloud_folder_candidates(name):
+            if os.path.isdir(d):
+                path = filedialog.askopenfilename(
+                    parent=self,
+                    title=f"Choose from {name}",
+                    initialdir=d,
+                    filetypes=[
+                        (
+                            "Images",
+                            "*.png *.jpg *.jpeg *.gif *.bmp *.webp *.tiff *.tif",
+                        ),
+                        ("All files", "*.*"),
+                    ],
+                )
+                if path:
+                    self._load_image_path(path)
+                return
+        self._show_choose_fail(
+            f"{name} folder not found. Install sync or use From device."
+        )
+
+    def _choose_from_url_menu(self):
+        self._show_url_entry()
+
+    def _fetch_url_as_image(self, url: str) -> Image.Image:
+        u = url.strip()
+        if not u.startswith(("http://", "https://")):
+            u = "https://" + u
+        req = urllib.request.Request(
+            u,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; TheOwlTranslator/1.0)"},
+        )
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            data = resp.read()
+        if len(data) > 25 * 1024 * 1024:
+            raise ValueError("Download too large (max 25 MB).")
+        bio = BytesIO(data)
+        img = Image.open(bio)
+        img.load()
+        return img
+
+    def _load_image_from_url_async(self):
+        if not hasattr(self, "url_entry"):
+            return
+        url = self.url_entry.get().strip()
+        if not url:
+            self._show_choose_fail("Enter a URL.")
+            return
+
+        self.url_load_btn.configure(state="disabled")
+
+        def work():
+            try:
+                img = self._fetch_url_as_image(url)
+
+                def ok():
+                    self.url_load_btn.configure(state="normal")
+                    settings["current_img"] = img
+                    self._clear_choose_fail()
+                    self.process_image()
+
+                self.after(0, ok)
+            except (urllib.error.URLError, OSError, ValueError) as e:
+                logger.error(f"URL image load failed: {e}")
+                err_msg = str(e)
+
+                def fail():
+                    self.url_load_btn.configure(state="normal")
+                    self._show_choose_fail(err_msg)
+
+                self.after(0, fail)
+            except Exception as e:
+                logger.error(f"URL image load failed: {e}")
+
+                def fail2():
+                    self.url_load_btn.configure(state="normal")
+                    self._show_choose_fail(
+                        "Could not load image from URL (unsupported format or error)."
+                    )
+
+                self.after(0, fail2)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _choose_from_clipboard(self):
+        self._hide_url_entry()
+        img = ImageGrab.grabclipboard()
+        if isinstance(img, Image.Image):
+            settings["current_img"] = img
+            self._clear_choose_fail()
+            self.process_image()
+        else:
+            self._show_choose_fail("No image in clipboard.")
 
     def handle_drop(self, event):
         try:
-            state["current_img"] = Image.open(event.data.strip("{}"))
+            settings["current_img"] = Image.open(event.data.strip("{}"))
             self.process_image()
         except Exception as e:
             logger.error(f"Error handling drop: {e}")
@@ -588,21 +1038,21 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
     def handle_paste(self, event=None):
         img = ImageGrab.grabclipboard()
         if isinstance(img, Image.Image):
-            state["current_img"] = img
+            settings["current_img"] = img
             self.process_image()
             # Check if app is in the foreground
             if (
-                state["hotkey_settings"]["background_process_hotkey"]["enable"]
+                settings["hotkey_settings"]["background_process_hotkey"]["enable"]
                 and self.state() != "normal"
             ):
                 self.copy_result()
 
     # --- OCR Logic ---
     def process_image(self):
-        if state["current_img"]:
+        if settings["current_img"]:
             self.result_box.delete("1.0", "end")
             self.result_box.insert("1.0", "⚙️ Processing...")
-            thumb = state["current_img"].copy()
+            thumb = settings["current_img"].copy()
             thumb.thumbnail((500, 220))
             # Use a Tk PhotoImage and store it as an instance attribute
             # to prevent garbage collection issues across multiple updates.
@@ -613,15 +1063,16 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
     def _ocr_worker(self):
         try:
-            img = ImageOps.autocontrast(state["current_img"].convert("L"))
+            img = ImageOps.autocontrast(settings["current_img"].convert("L"))
             text = pytesseract.image_to_string(
-                img, lang=state["ocr_langs"], config="--psm 6"
+                img, lang=settings["ocr_langs"], config="--psm 6"
             ).strip()
-            if text and state["enable_translation"]:
+            if text and settings["enable_translation"]:
                 from deep_translator import GoogleTranslator
 
                 text = GoogleTranslator(
-                    source="auto", target=LANG_MAP[state["target_lang"]]["trans_lang"]
+                    source="auto",
+                    target=LANG_MAP[settings["target_lang"]]["trans_lang"],
                 ).translate(text)
             self.after(0, lambda: self._update_results(text))
         except Exception as e:
@@ -636,7 +1087,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             if not text:
                 return
 
-            if not state["enable_translation"]:
+            if not settings["enable_translation"]:
                 return self.after(0, lambda: self._update_results(text))
 
             # 2. Immediate UI Feedback
@@ -653,14 +1104,12 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         try:
             from deep_translator import GoogleTranslator
 
-            target_lang = state["target_lang"]
+            target_lang = settings["target_lang"]
             target_code = LANG_MAP[target_lang]["trans_lang"]
 
             translation_result = GoogleTranslator(
                 source="auto", target=target_code
             ).translate(text)
-
-            state["current_lang_choice"] = target_lang
 
             self.after(0, lambda: self._update_results(translation_result))
         except Exception as e:
@@ -697,19 +1146,19 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             engine.setProperty("rate", 150)
 
             # --- Voice Selection Logic ---
-            voices = engine.getProperty("voices")
-            target_lang = state["current_lang_choice"]
-            selected_voice = self._get_voice_id(
-                voices, LANG_MAP[target_lang]["tts_lang"]
+            selected_voice_id = next(
+                k
+                for k, v in self.selected_voices_dict.items()
+                if v == self.voice_var_main.get()
             )
 
-            if selected_voice:
-                engine.setProperty("voice", selected_voice)
+            if selected_voice_id:
+                engine.setProperty("voice", selected_voice_id)
             else:
                 # TODO: Pop up a message to the user to install a new voice
                 messagebox.showerror(
                     "No voice found",
-                    f'No voice found for "{target_lang}". Please install a new voice from the settings.',
+                    f'No voice found for "{settings["target_lang"]}". Please install a new voice from the settings.',
                 )
                 return
 
@@ -764,7 +1213,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         try:
             temp_engine = pyttsx3.init()
             voices = temp_engine.getProperty("voices")
-            return [v.name for v in voices]
+            return voices
         except Exception as e:
             logger.error(f"Error getting voice list: {e}")
             return ["No voices found"]
@@ -793,7 +1242,7 @@ if __name__ == "__main__":
     # 3. Register the hotkey to just 'deiconify' (unhide) the app
     # We don't need a separate thread here because the app is already 'alive'
     app._hotkey_handle_application_invoke = keyboard.add_hotkey(
-        state["hotkey_settings"]["application_invoke_hotkey"]["hotkey"],
+        settings["hotkey_settings"]["application_invoke_hotkey"]["hotkey"],
         show_app_request,
     )
 
@@ -804,4 +1253,7 @@ if __name__ == "__main__":
     try:
         app.mainloop()
     except KeyboardInterrupt:
+        from utils.transfer_hub_runner import stop_transfer_hub_server
+
+        stop_transfer_hub_server()
         sys.exit(0)
