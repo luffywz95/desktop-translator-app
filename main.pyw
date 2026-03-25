@@ -249,6 +249,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.ocr_frame = self.tab_frame.tab("Image")
         self.ocr_frame.grid_rowconfigure(0, weight=1)
         self.ocr_frame.grid_columnconfigure(0, weight=1)
+        self.ocr_frame.grid_rowconfigure(1, weight=0)
         self.placeholder_text = "Drag & Drop Image Here\nor press Ctrl+V to paste"
 
         self.choose_fail_label = ctk.CTkLabel(
@@ -269,6 +270,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             corner_radius=15,
             text_color="gray",
         )
+        self.img_zone.pack(fill="both", expand=True)
         self.img_zone.drop_target_register(DND_FILES)
         self.img_zone.dnd_bind("<<Drop>>", self.handle_drop)
         self.bind("<Control-v>", self.handle_paste)
@@ -276,13 +278,13 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.ocr_bottom = ctk.CTkFrame(self.ocr_frame, fg_color="transparent")
         self.ocr_bottom.grid_columnconfigure(0, weight=1)
         self.ocr_bottom.grid_columnconfigure(1, weight=0)
+        self.ocr_bottom.grid_rowconfigure(0, weight=0)
 
         self.url_row = ctk.CTkFrame(self.ocr_bottom, fg_color="transparent")
         self.url_entry = ctk.CTkEntry(
             self.url_row,
             placeholder_text="http://www.example.com/examplefile.pdf",
             placeholder_text_color=("#4A90E2", "#6AB0FF"),
-            height=30,
             font=("Segoe UI", 12),
             corner_radius=6,
             border_width=1,
@@ -293,20 +295,22 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             self.url_row,
             text="Load",
             width=64,
-            height=30,
             corner_radius=8,
             font=("Segoe UI", 12, "bold"),
             command=self._load_image_from_url_async,
         )
         self.url_load_btn.pack(side="left", padx=(8, 0))
 
-        self.choose_split_outer = ctk.CTkFrame(self.ocr_bottom, fg_color="transparent")
+        self.choose_split_outer = ctk.CTkFrame(
+            self.ocr_bottom,
+            fg_color="transparent",
+        )
         self.choose_file_main_btn = ctk.CTkButton(
             self.choose_split_outer,
             text="📄 Choose file",
             width=120,
-            height=32,
             corner_radius=8,
+            border_width=0,
             font=("Segoe UI", 13, "bold"),
             command=self._choose_from_device,
             fg_color=("#3b8ed0", "#1f538d"),
@@ -314,16 +318,11 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             text_color=("white", "white"),
         )
         self.choose_file_main_btn.pack(side="left")
-        ctk.CTkFrame(
-            self.choose_split_outer,
-            width=1,
-            fg_color=("#93c4e8", "#2a4d73"),
-        ).pack(side="left", fill="y", pady=4)
+
         self.choose_file_drop_btn = ctk.CTkButton(
             self.choose_split_outer,
             text="▾",
             width=36,
-            height=32,
             corner_radius=8,
             font=("Segoe UI", 13, "bold"),
             fg_color=("#6d6d6d", "#3d3d3d"),
@@ -338,7 +337,6 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             self.btn_frame,
             text="🔄 Process",
             width=80,
-            height=32,
             command=self.process_image,
             state="disabled",
         )
@@ -350,7 +348,6 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             self.btn_frame,
             text="🔃 Reset",
             width=80,
-            height=32,
             command=self.clear_all,
             fg_color="#e74c3c",
             hover_color="#c0392b",
@@ -364,7 +361,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.btn_frame.grid(row=1, column=1, sticky="e", padx=(16, 0), pady=(2, 0))
 
         self.img_zone.grid(row=0, column=0, sticky="nsew")
-        self.ocr_bottom.grid(row=1, column=0, sticky="ew", pady=(4, 8))
+        # Keep the OCR button bar pinned close to the bottom border (with a bit of spacing).
+        self.ocr_bottom.grid(row=1, column=0, sticky="ew", padx=(4, 4), pady=(4, 4))
 
         self._choose_menu = Menu(self, tearoff=0)
         self._choose_menu.add_command(
