@@ -12,6 +12,7 @@ import keyboard
 import pyperclip
 import threading
 import ctypes
+import socket
 import sys
 from dotenv import load_dotenv
 import pyttsx3
@@ -29,6 +30,19 @@ from utils.persistence import (
     default_settings,
     default_lang_map,
 )
+
+# Bind app to specific network port when it is running, e.g. 47382, same port number will not be allowed to run again
+# Choose a random high port number
+lock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:
+    lock_socket.bind(("127.0.0.1", 55555))
+except socket.error:
+    messagebox.showerror("Error", "App is already running!")
+    sys.exit(1)
+
+# Write the pid to a file, so that we can kill the app if it is already running
+with open("app.pid", "w") as f:
+    f.write(str(os.getpid()))
 
 # --- 1. System & Engine Setup ---
 ctypes.windll.shcore.SetProcessDpiAwareness(1)
