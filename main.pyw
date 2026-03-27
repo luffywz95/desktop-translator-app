@@ -1,7 +1,7 @@
 import os
 import customtkinter as ctk
 from io import BytesIO
-from tkinter import Menu, filedialog, messagebox
+from tkinter import Listbox, Menu, Scrollbar, filedialog, messagebox
 import urllib.error
 import urllib.request
 from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -12,6 +12,7 @@ import keyboard
 import pyperclip
 import threading
 import ctypes
+import socket
 import sys
 from dotenv import load_dotenv
 import pyttsx3
@@ -29,6 +30,19 @@ from utils.persistence import (
     default_settings,
     default_lang_map,
 )
+
+# Bind app to specific network port when it is running, e.g. 47382, same port number will not be allowed to run again
+# Choose a random high port number
+lock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:
+    lock_socket.bind(("127.0.0.1", 55555))
+except socket.error:
+    messagebox.showerror("Error", "App is already running!")
+    sys.exit(1)
+
+# Write the pid to a file, so that we can kill the app if it is already running
+with open("app.pid", "w") as f:
+    f.write(str(os.getpid()))
 
 # --- 1. System & Engine Setup ---
 ctypes.windll.shcore.SetProcessDpiAwareness(1)
@@ -100,9 +114,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         super().deiconify()
         from utils.transfer_hub_runner import start_transfer_hub_server
 
-        start_transfer_hub_server(
-            allow_lan=settings.get("transfer_hub_allow_lan", False),
-        )
+        allow_lan, port = self._receive_listen_params()
+        start_transfer_hub_server(allow_lan=allow_lan, port=port)
 
     def _load_icon(self, light_path, dark_path, size=(20, 20)):
         return ctk.CTkImage(
@@ -178,12 +191,52 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             return
         from utils.transfer_hub_runner import restart_transfer_hub_server
 
-        restart_transfer_hub_server(
-            allow_lan=settings.get("transfer_hub_allow_lan", False),
-        )
+        allow_lan, port = self._receive_listen_params()
+        restart_transfer_hub_server(allow_lan=allow_lan, port=port)
 
-    def _on_transfer_hub_lan_toggle(self):
-        want = self.transfer_hub_lan_var.get()
+    def _get_port_or_default(self, raw: str, default: int = 5000) -> int:
+        try:
+            p = int(str(raw).strip())
+            if 1 <= p <= 65535:
+                return p
+        except (TypeError, ValueError):
+            pass
+        return int(default)
+
+    def _normalized_receive_file(self) -> dict:
+        d = settings.get("receive_file")
+        if not isinstance(d, dict):
+            d = {}
+        port = self._get_port_or_default(str(d.get("port", 5000)), 5000)
+        return {"enable": bool(d.get("enable", False)), "port": port}
+
+    def _normalized_upload_file(self) -> dict:
+        d = settings.get("upload_file")
+        if not isinstance(d, dict):
+            d = {}
+        port = self._get_port_or_default(str(d.get("port", 5000)), 5000)
+        return {
+            "enable": bool(d.get("enable", False)),
+            "port": port,
+            "remote_url": str(d.get("remote_url", "") or "").strip(),
+            "remote_token": str(d.get("remote_token", "") or ""),
+        }
+
+    def _receive_listen_params(self) -> tuple[bool, int]:
+        r = self._normalized_receive_file()
+        return bool(r["enable"]), int(r["port"])
+
+    def _persist_transfer_hub_atomic(self, receive: dict, upload: dict) -> None:
+        """Assign whole dicts so LiveState flushes to LMDB (nested mutation does not)."""
+        settings.begin_batch()
+        settings["receive_file"] = dict(receive)
+        settings["upload_file"] = dict(upload)
+        settings.commit()
+
+    def _on_receive_file_toggle(self):
+        want = self.receive_file_var.get()
+        port = self._get_port_or_default(self.receive_file_port_var.get(), 5000)
+        self.receive_file_port_var.set(str(port))
         if want:
             if sys.platform == "win32":
                 from utils.windows_firewall import (
@@ -192,41 +245,89 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
                     wait_for_inbound_tcp_allowed,
                 )
 
-                if not inbound_tcp_port_allowed(5000):
+                if not inbound_tcp_port_allowed(port):
                     if not messagebox.askyesno(
                         "Windows Firewall",
                         "To receive uploads from phones and other PCs on your network, "
-                        "Windows Firewall needs an inbound rule that allows TCP port 5000.\n\n"
+                        f"Windows Firewall needs an inbound rule that allows TCP port {port}.\n\n"
                         "Allow this app to add that rule? (Windows will ask for administrator "
                         "approval on the next step.)",
                     ):
-                        self.transfer_hub_lan_var.set(False)
+                        self.receive_file_var.set(False)
                         return
-                    if not add_transfer_hub_rule_elevated(5000):
+                    if not add_transfer_hub_rule_elevated(port):
                         messagebox.showerror(
                             "Firewall",
                             "Could not start the firewall rule setup.",
                         )
-                        self.transfer_hub_lan_var.set(False)
+                        self.receive_file_var.set(False)
                         return
                     messagebox.showinfo(
                         "Firewall",
                         "If a Windows administrator prompt appeared, approve it to add the rule.\n\n"
                         "Click OK when done so we can verify the connection.",
                     )
-                    if not wait_for_inbound_tcp_allowed(5000):
+                    if not wait_for_inbound_tcp_allowed(port):
                         messagebox.showwarning(
                             "Firewall",
-                            "Could not confirm an inbound allow rule for TCP port 5000. "
+                            f"Could not confirm an inbound allow rule for TCP port {port}. "
                             "If you cancelled the administrator prompt, try again. "
                             "Otherwise add the rule manually in Windows Defender Firewall.",
                         )
-                        self.transfer_hub_lan_var.set(False)
+                        self.receive_file_var.set(False)
                         return
-            settings["transfer_hub_allow_lan"] = True
-        else:
-            settings["transfer_hub_allow_lan"] = False
+        u = self._normalized_upload_file()
+        r = {"enable": bool(want), "port": int(port)}
+        self._persist_transfer_hub_atomic(r, u)
         self._restart_transfer_hub_if_visible()
+
+    def _on_upload_file_toggle(self):
+        want = self.upload_file_var.get()
+        port = self._get_port_or_default(self.upload_file_port_var.get(), 5000)
+        self.upload_file_port_var.set(str(port))
+        if want and sys.platform == "win32":
+            from utils.windows_firewall import (
+                add_upload_file_rule_elevated,
+                outbound_tcp_port_allowed,
+                wait_for_outbound_tcp_allowed,
+            )
+
+            if not outbound_tcp_port_allowed(port):
+                if not messagebox.askyesno(
+                    "Windows Firewall",
+                    "To upload files to remote services on this port, "
+                    f"Windows Firewall needs an outbound allow rule for TCP port {port}.\n\n"
+                    "Allow this app to add that rule? (Windows will ask for administrator "
+                    "approval on the next step.)",
+                ):
+                    self.upload_file_var.set(False)
+                    return
+                if not add_upload_file_rule_elevated(port):
+                    messagebox.showerror(
+                        "Firewall",
+                        "Could not start the outbound firewall rule setup.",
+                    )
+                    self.upload_file_var.set(False)
+                    return
+                messagebox.showinfo(
+                    "Firewall",
+                    "If a Windows administrator prompt appeared, approve it to add the outbound rule.\n\n"
+                    "Click OK when done so we can verify the connection.",
+                )
+                if not wait_for_outbound_tcp_allowed(port):
+                    messagebox.showwarning(
+                        "Firewall",
+                        f"Could not confirm an outbound allow rule for TCP port {port}. "
+                        "If you cancelled the administrator prompt, try again. "
+                        "Otherwise add the rule manually in Windows Defender Firewall.",
+                    )
+                    self.upload_file_var.set(False)
+                    return
+        r = self._normalized_receive_file()
+        u = self._normalized_upload_file()
+        u["enable"] = bool(self.upload_file_var.get())
+        u["port"] = int(port)
+        self._persist_transfer_hub_atomic(r, u)
 
     def _setup_main_ui(self):
         self.main_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -416,6 +517,179 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         ToolTip(self.translate_btn, "Translate the text in the text editor")
         # endregion
 
+        # region Upload tab (Remote URL + Bluetooth mobile)
+        self.tab_frame.add("Upload")
+        self.upload_frame = self.tab_frame.tab("Upload")
+        self.upload_frame.grid_columnconfigure(1, weight=1)
+        self.upload_frame.grid_rowconfigure(0, weight=1)
+
+        self._upload_nav = ctk.CTkFrame(self.upload_frame, width=76, fg_color="transparent")
+        self._upload_nav.grid(row=0, column=0, sticky="ns", padx=(0, 6))
+        self._upload_nav.grid_propagate(False)
+
+        self._upload_nav_remote = ctk.CTkButton(
+            self._upload_nav,
+            text="Remote",
+            width=68,
+            command=lambda: self._show_upload_subtab("remote"),
+        )
+        self._upload_nav_remote.pack(pady=(0, 8))
+        self._upload_nav_mobile = ctk.CTkButton(
+            self._upload_nav,
+            text="Mobile",
+            width=68,
+            command=lambda: self._show_upload_subtab("mobile"),
+        )
+        self._upload_nav_mobile.pack()
+
+        self.upload_remote_panel = ctk.CTkFrame(self.upload_frame, fg_color="transparent")
+        self.upload_remote_panel.grid_columnconfigure(0, weight=1)
+        self.upload_remote_panel.grid_rowconfigure(8, weight=1)
+
+        self.upload_mobile_panel = ctk.CTkFrame(self.upload_frame, fg_color="transparent")
+        self.upload_mobile_panel.grid_columnconfigure(0, weight=1)
+        self.upload_mobile_panel.grid_rowconfigure(1, weight=1)
+
+        _uu = self._normalized_upload_file()
+        ctk.CTkLabel(
+            self.upload_remote_panel,
+            text="Upload files from this PC to a remote URL.",
+            font=("Segoe UI", 12, "bold"),
+        ).grid(row=0, column=0, sticky="w", pady=(0, 4))
+        ctk.CTkLabel(
+            self.upload_remote_panel,
+            text='Remote URL (POST multipart/form-data, field name "file"):',
+            font=("Segoe UI", 11),
+        ).grid(row=1, column=0, sticky="w")
+        self.upload_tab_url_entry = ctk.CTkEntry(
+            self.upload_remote_panel,
+            placeholder_text="https://your-server.example/upload/file",
+            font=("Segoe UI", 12),
+        )
+        if _uu["remote_url"]:
+            self.upload_tab_url_entry.insert(0, _uu["remote_url"])
+        self.upload_tab_url_entry.grid(row=2, column=0, sticky="ew", pady=(2, 6))
+        ctk.CTkLabel(
+            self.upload_remote_panel,
+            text="Bearer token (optional):",
+            font=("Segoe UI", 11),
+        ).grid(row=3, column=0, sticky="w")
+        self.upload_tab_token_entry = ctk.CTkEntry(
+            self.upload_remote_panel,
+            show="*",
+            font=("Segoe UI", 12),
+        )
+        if _uu["remote_token"]:
+            self.upload_tab_token_entry.insert(0, _uu["remote_token"])
+        self.upload_tab_token_entry.grid(row=4, column=0, sticky="ew", pady=(2, 6))
+
+        path_row = ctk.CTkFrame(self.upload_remote_panel, fg_color="transparent")
+        path_row.grid(row=5, column=0, sticky="ew", pady=(0, 6))
+        path_row.grid_columnconfigure(0, weight=1)
+        self.upload_tab_path_entry = ctk.CTkEntry(
+            path_row,
+            placeholder_text="No file selected",
+            font=("Segoe UI", 12),
+        )
+        self.upload_tab_path_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        ctk.CTkButton(
+            path_row,
+            text="Browse",
+            width=80,
+            command=self._upload_tab_browse,
+        ).grid(row=0, column=1)
+        self._upload_local_path = ""
+
+        up_btn_row = ctk.CTkFrame(self.upload_remote_panel, fg_color="transparent")
+        up_btn_row.grid(row=6, column=0, sticky="w")
+        self.upload_tab_send_btn = ctk.CTkButton(
+            up_btn_row,
+            text="Upload file",
+            width=120,
+            fg_color="#2ecc71",
+            hover_color="#27ae60",
+            font=("Segoe UI", 13, "bold"),
+            command=self._upload_tab_send,
+        )
+        self.upload_tab_send_btn.pack(side="left")
+
+        self.upload_tab_status = ctk.CTkTextbox(
+            self.upload_remote_panel,
+            height=100,
+            font=("Consolas", 11),
+        )
+        self.upload_tab_status.grid(row=8, column=0, sticky="nsew", pady=(8, 0))
+
+        self._bt_target_device_id = ""
+        self._bt_target_name = ""
+        self._upload_mobile_path = ""
+        self._upload_mobile_preview_img = None
+        self._bt_picker_win = None
+        self._bt_picker_devices = []
+
+        mobile_top = ctk.CTkFrame(self.upload_mobile_panel, fg_color="transparent")
+        mobile_top.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        mobile_top.grid_columnconfigure(0, weight=1)
+        self.upload_bt_device_label = ctk.CTkLabel(
+            mobile_top,
+            text="No Bluetooth device selected.",
+            font=("Segoe UI", 11),
+            anchor="w",
+        )
+        self.upload_bt_device_label.grid(row=0, column=0, sticky="w")
+        ctk.CTkButton(
+            mobile_top,
+            text="Choose Bluetooth device",
+            width=168,
+            command=self._upload_bt_open_picker,
+        ).grid(row=0, column=1, sticky="e", padx=(8, 0))
+
+        self.upload_mobile_preview = ctk.CTkLabel(
+            self.upload_mobile_panel,
+            text="No file selected\n(Browse to choose a file)",
+            fg_color=("#ebebeb", "#2b2b2b"),
+            corner_radius=12,
+            text_color="gray",
+        )
+        self.upload_mobile_preview.grid(row=1, column=0, sticky="nsew", pady=(0, 6))
+
+        m_path_row = ctk.CTkFrame(self.upload_mobile_panel, fg_color="transparent")
+        m_path_row.grid(row=2, column=0, sticky="ew", pady=(0, 6))
+        m_path_row.grid_columnconfigure(0, weight=1)
+        self.upload_mobile_path_entry = ctk.CTkEntry(
+            m_path_row,
+            placeholder_text="No file selected",
+            font=("Segoe UI", 12),
+        )
+        self.upload_mobile_path_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        ctk.CTkButton(
+            m_path_row,
+            text="Browse",
+            width=80,
+            command=self._upload_mobile_browse,
+        ).grid(row=0, column=1)
+
+        self.upload_mobile_send_btn = ctk.CTkButton(
+            self.upload_mobile_panel,
+            text="Upload file to device",
+            width=200,
+            fg_color="#2ecc71",
+            hover_color="#27ae60",
+            font=("Segoe UI", 13, "bold"),
+            command=self._upload_mobile_send_bt,
+        )
+        self.upload_mobile_send_btn.grid(row=3, column=0, sticky="w", pady=(0, 6))
+
+        self.upload_mobile_status = ctk.CTkTextbox(
+            self.upload_mobile_panel,
+            height=88,
+            font=("Consolas", 10),
+        )
+        self.upload_mobile_status.grid(row=4, column=0, sticky="nsew", pady=(4, 0))
+
+        self._show_upload_subtab("remote")
+        # endregion
+
         # region Translation Options
         self.trans_opt_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.trans_opt_frame.pack(fill="x", pady=10)
@@ -579,30 +853,72 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             border_width=0,
         ).pack(fill="x", padx=15, pady=10)
 
-        # region Transfer Hub
-        self.transfer_hub_lan_var = ctk.BooleanVar(
-            value=settings.get("transfer_hub_allow_lan", False),
-        )
-        th_row = ctk.CTkFrame(self.settings_panel, fg_color="transparent")
-        th_row.pack(fill="x", padx=30, pady=(0, 8))
+        # region Transfer Hub (receive + upload firewall / ports)
+        _r0 = self._normalized_receive_file()
+        _u0 = self._normalized_upload_file()
+
         ctk.CTkLabel(
-            th_row,
-            text="Enable Transfer Hub",
+            self.settings_panel,
+            text="Transfer Hub",
+            font=("Segoe UI", 14, "bold"),
+        ).pack(anchor="w", padx=30, pady=(0, 4))
+
+        self.receive_file_var = ctk.BooleanVar(value=bool(_r0["enable"]))
+        self.receive_file_port_var = ctk.StringVar(value=str(_r0["port"]))
+        receive_row = ctk.CTkFrame(self.settings_panel, fg_color="transparent")
+        receive_row.pack(fill="x", padx=30, pady=(0, 6))
+        ctk.CTkLabel(
+            receive_row,
+            text="Receive file",
             font=("Segoe UI", 13, "bold"),
         ).pack(side="left")
-
-        self.transfer_hub_lan_switch = ctk.CTkSwitch(
-            th_row,
+        self.receive_file_port_entry = ctk.CTkEntry(
+            receive_row,
+            width=76,
+            textvariable=self.receive_file_port_var,
+            justify="center",
+        )
+        self.receive_file_port_entry.pack(side="right", padx=(8, 0))
+        self.receive_file_switch = ctk.CTkSwitch(
+            receive_row,
             text="",
             width=44,
-            variable=self.transfer_hub_lan_var,
-            command=self._on_transfer_hub_lan_toggle,
+            variable=self.receive_file_var,
+            command=self._on_receive_file_toggle,
         )
-        self.transfer_hub_lan_switch.pack(side="right", padx=(8, 0))
+        self.receive_file_switch.pack(side="right", padx=(8, 0))
         ToolTip(
-            self.transfer_hub_lan_switch,
-            "When on, Transfer Hub listens on your network (TCP 5000). "
-            "Windows Firewall must allow inbound traffic on this port.",
+            self.receive_file_switch,
+            "Receive: listen on LAN for uploads to this PC; adds inbound firewall rule for the port.",
+        )
+
+        self.upload_file_var = ctk.BooleanVar(value=bool(_u0["enable"]))
+        self.upload_file_port_var = ctk.StringVar(value=str(_u0["port"]))
+        upload_row = ctk.CTkFrame(self.settings_panel, fg_color="transparent")
+        upload_row.pack(fill="x", padx=30, pady=(0, 8))
+        ctk.CTkLabel(
+            upload_row,
+            text="Upload file",
+            font=("Segoe UI", 13, "bold"),
+        ).pack(side="left")
+        self.upload_file_port_entry = ctk.CTkEntry(
+            upload_row,
+            width=76,
+            textvariable=self.upload_file_port_var,
+            justify="center",
+        )
+        self.upload_file_port_entry.pack(side="right", padx=(8, 0))
+        self.upload_file_switch = ctk.CTkSwitch(
+            upload_row,
+            text="",
+            width=44,
+            variable=self.upload_file_var,
+            command=self._on_upload_file_toggle,
+        )
+        self.upload_file_switch.pack(side="right", padx=(8, 0))
+        ToolTip(
+            self.upload_file_switch,
+            "Upload: add outbound firewall rule for connections to remote TCP ports (e.g. your server).",
         )
         # endregion
 
@@ -739,7 +1055,17 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
         self.dim_var.set(settings["enable_focus_dim"])
         self.opacity_val.set(settings["idle_opacity"])
-        self.transfer_hub_lan_var.set(settings.get("transfer_hub_allow_lan", False))
+        _r = self._normalized_receive_file()
+        _u = self._normalized_upload_file()
+        self.receive_file_var.set(_r["enable"])
+        self.receive_file_port_var.set(str(_r["port"]))
+        self.upload_file_var.set(_u["enable"])
+        self.upload_file_port_var.set(str(_u["port"]))
+        if hasattr(self, "upload_tab_url_entry"):
+            self.upload_tab_url_entry.delete(0, "end")
+            self.upload_tab_url_entry.insert(0, _u["remote_url"])
+            self.upload_tab_token_entry.delete(0, "end")
+            self.upload_tab_token_entry.insert(0, _u["remote_token"])
 
     def close_settings(self, save=False):
         settings["settings_open"] = False
@@ -777,9 +1103,22 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
                 settings["enable_focus_dim"] = self.dim_var.get()
                 settings["idle_opacity"] = self.opacity_val.get()
-                settings["transfer_hub_allow_lan"] = self.transfer_hub_lan_var.get()
+                _rp = self._get_port_or_default(self.receive_file_port_var.get(), 5000)
+                _up = self._get_port_or_default(self.upload_file_port_var.get(), 5000)
+                self.receive_file_port_var.set(str(_rp))
+                self.upload_file_port_var.set(str(_up))
+                self._persist_transfer_hub_atomic(
+                    {"enable": bool(self.receive_file_var.get()), "port": _rp},
+                    {
+                        "enable": bool(self.upload_file_var.get()),
+                        "port": _up,
+                        "remote_url": self.upload_tab_url_entry.get().strip(),
+                        "remote_token": self.upload_tab_token_entry.get(),
+                    },
+                )
             finally:
                 settings.commit()
+            self._restart_transfer_hub_if_visible()
 
         if self.mask_layer:
             self.mask_layer.destroy()
@@ -1192,6 +1531,325 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.process_btn.configure(state="normal")
         self.copy_btn.configure(state="normal" if text else "disabled")
         self.voice_btn.configure(state="normal" if text else "disabled")
+
+    def _show_upload_subtab(self, name: str):
+        name = (name or "").strip().lower()
+        if name == "mobile":
+            self.upload_remote_panel.grid_remove()
+            self.upload_mobile_panel.grid(row=0, column=1, sticky="nsew")
+            sel = "mobile"
+        else:
+            self.upload_mobile_panel.grid_remove()
+            self.upload_remote_panel.grid(row=0, column=1, sticky="nsew")
+            sel = "remote"
+        on = ("#3b8ed0", "#1f538d")
+        off = ("gray70", "gray40")
+        self._upload_nav_remote.configure(
+            fg_color=on if sel == "remote" else off,
+            font=("Segoe UI", 12, "bold") if sel == "remote" else ("Segoe UI", 12),
+        )
+        self._upload_nav_mobile.configure(
+            fg_color=on if sel == "mobile" else off,
+            font=("Segoe UI", 12, "bold") if sel == "mobile" else ("Segoe UI", 12),
+        )
+
+    def _upload_bt_close_picker(self):
+        if self._bt_picker_win is not None and self._bt_picker_win.winfo_exists():
+            self._bt_picker_win.destroy()
+        self._bt_picker_win = None
+
+    def _upload_bt_refresh_picker_list(self):
+        from utils import bluetooth_transfer as bt
+
+        if self._bt_picker_win is None or not self._bt_picker_win.winfo_exists():
+            return
+        self._bt_picker_status.configure(text="Scanning…")
+
+        def work():
+            err = ""
+            try:
+                devs = bt.run_coroutine(bt.list_devices_async())
+            except Exception as e:
+                devs = []
+                err = str(e)
+
+            def done():
+                if self._bt_picker_win is None or not self._bt_picker_win.winfo_exists():
+                    return
+                self._bt_picker_devices = devs
+                self._bt_listbox.delete(0, "end")
+                for d in devs:
+                    tag = "paired" if d.is_paired else "nearby"
+                    self._bt_listbox.insert("end", f"{d.name}  ({tag})")
+                if devs:
+                    self._bt_picker_status.configure(text=f"{len(devs)} device(s)")
+                elif err:
+                    self._bt_picker_status.configure(text=err[:120])
+                else:
+                    self._bt_picker_status.configure(text="No devices found")
+
+            self.after(0, done)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _upload_bt_open_picker(self):
+        from utils import bluetooth_transfer as bt
+
+        ok, msg = bt.bluetooth_transfer_available()
+        if not ok:
+            messagebox.showwarning("Bluetooth", msg)
+            return
+
+        if self._bt_picker_win is not None and self._bt_picker_win.winfo_exists():
+            self._bt_picker_win.lift()
+            self._upload_bt_refresh_picker_list()
+            return
+
+        self._bt_picker_win = ctk.CTkToplevel(self)
+        self._bt_picker_win.title("Bluetooth devices")
+        self._bt_picker_win.geometry("380x420")
+        self._bt_picker_win.transient(self)
+
+        topbar = ctk.CTkFrame(self._bt_picker_win, fg_color="transparent")
+        topbar.pack(fill="x", padx=10, pady=(10, 6))
+
+        ctk.CTkButton(
+            topbar,
+            text="↻",
+            width=36,
+            command=self._upload_bt_refresh_picker_list,
+            font=("Segoe UI", 18),
+        ).pack(side="left")
+        self._bt_picker_status = ctk.CTkLabel(topbar, text="", font=("Segoe UI", 11))
+        self._bt_picker_status.pack(side="left", padx=(8, 0), expand=True, anchor="w")
+        ctk.CTkButton(
+            topbar,
+            text="✕",
+            width=36,
+            command=self._upload_bt_close_picker,
+            font=("Segoe UI", 14),
+        ).pack(side="right")
+
+        list_fr = ctk.CTkFrame(self._bt_picker_win, fg_color="transparent")
+        list_fr.pack(fill="both", expand=True, padx=10, pady=(0, 6))
+
+        sb = Scrollbar(list_fr)
+        self._bt_listbox = Listbox(
+            list_fr,
+            height=14,
+            yscrollcommand=sb.set,
+            font=("Segoe UI", 11),
+            bg="#2b2b2b",
+            fg="#e7edf5",
+            selectbackground="#1f538d",
+            selectforeground="white",
+            highlightthickness=0,
+            bd=0,
+        )
+        self._bt_listbox.pack(side="left", fill="both", expand=True)
+        sb.config(command=self._bt_listbox.yview)
+        sb.pack(side="right", fill="y")
+        self._bt_listbox.bind("<Double-1>", lambda _e: self._upload_bt_use_selected())
+
+        btn_row = ctk.CTkFrame(self._bt_picker_win, fg_color="transparent")
+        btn_row.pack(fill="x", padx=10, pady=(0, 10))
+        ctk.CTkButton(
+            btn_row,
+            text="Pair selected",
+            command=self._upload_bt_pair_selected,
+        ).pack(side="left", padx=(0, 6))
+        ctk.CTkButton(
+            btn_row,
+            text="Use selected device",
+            fg_color="#2ecc71",
+            hover_color="#27ae60",
+            command=self._upload_bt_use_selected,
+        ).pack(side="left")
+
+        self._bt_picker_win.protocol("WM_DELETE_WINDOW", self._upload_bt_close_picker)
+        self._upload_bt_refresh_picker_list()
+
+    def _upload_bt_selected_info(self):
+        lb = getattr(self, "_bt_listbox", None)
+        if lb is None or not self._bt_picker_devices:
+            return None
+        sel = lb.curselection()
+        if not sel:
+            return None
+        i = int(sel[0])
+        if i < 0 or i >= len(self._bt_picker_devices):
+            return None
+        return self._bt_picker_devices[i]
+
+    def _upload_bt_pair_selected(self):
+        from utils import bluetooth_transfer as bt
+
+        dev = self._upload_bt_selected_info()
+        if dev is None:
+            messagebox.showinfo("Bluetooth", "Select a device in the list.")
+            return
+        if dev.is_paired:
+            messagebox.showinfo("Bluetooth", "This device is already paired.")
+            return
+        if not dev.can_pair:
+            messagebox.showwarning(
+                "Bluetooth",
+                "Pairing is not available for this entry. Use Windows Settings → Bluetooth.",
+            )
+            return
+
+        self._bt_picker_status.configure(text="Pairing…")
+
+        def work():
+            ok, msg = bt.run_coroutine(bt.pair_device_async(dev.device_id))
+
+            def done():
+                if self._bt_picker_win and self._bt_picker_win.winfo_exists():
+                    self._bt_picker_status.configure(text=msg[:120])
+                if ok:
+                    self._upload_bt_refresh_picker_list()
+                elif not ok:
+                    messagebox.showwarning("Bluetooth", msg)
+
+            self.after(0, done)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _upload_bt_use_selected(self):
+        dev = self._upload_bt_selected_info()
+        if dev is None:
+            messagebox.showinfo("Bluetooth", "Select a device in the list.")
+            return
+        self._bt_target_device_id = dev.device_id
+        self._bt_target_name = dev.name
+        self.upload_bt_device_label.configure(text=f"Device: {dev.name}")
+        self._upload_bt_close_picker()
+
+    def _upload_mobile_browse(self):
+        path = filedialog.askopenfilename(
+            parent=self,
+            title="Choose file to send",
+            filetypes=[("All files", "*.*")],
+        )
+        if path:
+            self._upload_mobile_path = path
+            self.upload_mobile_path_entry.delete(0, "end")
+            self.upload_mobile_path_entry.insert(0, path)
+            self._update_upload_mobile_preview(path)
+
+    def _update_upload_mobile_preview(self, path: str):
+        self._upload_mobile_preview_img = None
+        try:
+            img = Image.open(path)
+            img.thumbnail((360, 240))
+            self._upload_mobile_preview_img = ImageTk.PhotoImage(img)
+            self.upload_mobile_preview.configure(
+                image=self._upload_mobile_preview_img,
+                text="",
+            )
+        except Exception:
+            base = os.path.basename(path)
+            self.upload_mobile_preview.configure(
+                image=None,
+                text=f"(No image preview)\n{base}",
+            )
+
+    def _upload_mobile_send_bt(self):
+        from utils import bluetooth_transfer as bt
+
+        ok, hint = bt.bluetooth_transfer_available()
+        if not ok:
+            messagebox.showwarning("Bluetooth", hint)
+            return
+        if not self._bt_target_device_id:
+            messagebox.showwarning("Bluetooth", "Choose a Bluetooth device first.")
+            return
+        if not getattr(self, "_upload_mobile_path", ""):
+            messagebox.showwarning("Bluetooth", "Choose a file first (Browse).")
+            return
+
+        local_path = self._upload_mobile_path
+        self.upload_mobile_send_btn.configure(state="disabled")
+        self.upload_mobile_status.delete("1.0", "end")
+        self.upload_mobile_status.insert("1.0", "Sending over Bluetooth…")
+
+        def work():
+            success, msg = bt.run_coroutine(
+                bt.send_file_obex_async(self._bt_target_device_id, local_path)
+            )
+
+            def done():
+                self.upload_mobile_send_btn.configure(state="normal")
+                self.upload_mobile_status.delete("1.0", "end")
+                self.upload_mobile_status.insert("1.0", msg if success else f"Failed: {msg}")
+
+            self.after(0, done)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _upload_tab_browse(self):
+        path = filedialog.askopenfilename(
+            parent=self,
+            title="Choose file to upload",
+            filetypes=[("All files", "*.*")],
+        )
+        if path:
+            self._upload_local_path = path
+            self.upload_tab_path_entry.delete(0, "end")
+            self.upload_tab_path_entry.insert(0, path)
+
+    def _upload_tab_send(self):
+        url = self.upload_tab_url_entry.get().strip()
+        if not url:
+            messagebox.showwarning("Upload", "Enter a remote URL.")
+            return
+        if not getattr(self, "_upload_local_path", ""):
+            messagebox.showwarning("Upload", "Choose a file first (Browse).")
+            return
+        token = self.upload_tab_token_entry.get().strip()
+
+        self.upload_tab_send_btn.configure(state="disabled")
+        self.upload_tab_status.delete("1.0", "end")
+        self.upload_tab_status.insert("1.0", "Uploading...")
+
+        local_path = self._upload_local_path
+
+        def work():
+            from utils.remote_upload import post_file_multipart
+
+            code, body = post_file_multipart(
+                url,
+                local_path,
+                field_name="file",
+                bearer_token=token or None,
+            )
+
+            def done():
+                self.upload_tab_send_btn.configure(state="normal")
+                self.upload_tab_status.delete("1.0", "end")
+                if 200 <= code < 300:
+                    self.upload_tab_status.insert(
+                        "1.0",
+                        f"Success HTTP {code}\n\n{(body or '')[:4000]}",
+                    )
+                    up = self._normalized_upload_file()
+                    up["remote_url"] = self.upload_tab_url_entry.get().strip()
+                    up["remote_token"] = self.upload_tab_token_entry.get()
+                    self._persist_transfer_hub_atomic(
+                        self._normalized_receive_file(),
+                        up,
+                    )
+                elif code == 0:
+                    self.upload_tab_status.insert("1.0", body or "Request failed.")
+                else:
+                    self.upload_tab_status.insert(
+                        "1.0",
+                        f"HTTP {code}\n\n{(body or '')[:4000]}",
+                    )
+
+            self.after(0, done)
+
+        threading.Thread(target=work, daemon=True).start()
 
     def copy_result(self):
         content = self.result_box.get("1.0", "end-1c")

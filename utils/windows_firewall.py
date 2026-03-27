@@ -1,4 +1,4 @@
-"""Windows Defender Firewall helpers for Transfer Hub (TCP inbound)."""
+"""Windows Defender Firewall helpers for receive/upload TCP rules."""
 
 from __future__ import annotations
 
@@ -12,8 +12,12 @@ from components.logger import Logger
 
 logger = Logger().get()
 
-# Must match the name used in netsh add rule (stable for show / duplicate checks).
-TRANSFER_HUB_RULE_NAME = "The Owl Transfer Hub TCP 5000"
+def transfer_hub_inbound_rule_name(port: int) -> str:
+    return f"The Owl Receive File TCP {int(port)}"
+
+
+def transfer_hub_outbound_rule_name(port: int) -> str:
+    return f"The Owl Upload File TCP {int(port)}"
 
 
 def _creationflags_no_window() -> int:
@@ -41,34 +45,24 @@ def _powershell_ok(script: str) -> bool:
         return False
 
 
-def named_transfer_hub_rule_exists() -> bool:
-    """
-    True if our rule exists (DisplayName from netsh add), using several probes.
-    """
+def _named_rule_exists(name: str) -> bool:
+    """True if rule exists by DisplayName."""
     if sys.platform != "win32":
         return True
 
-    # 1) WMI / DisplayName (matches what netsh add sets)
-    name_esc = TRANSFER_HUB_RULE_NAME.replace("'", "''")
+    name_esc = name.replace("'", "''")
     script = rf"""
 $ErrorActionPreference = 'SilentlyContinue'
 $n = '{name_esc}'
 $r = Get-NetFirewallRule -DisplayName $n -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($null -ne $r) {{ exit 0 }}
-$r2 = Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object {{
-    $_.DisplayName -like '*Owl*Transfer*Hub*5000*' -or $_.DisplayName -eq $n
-}} | Select-Object -First 1
-if ($null -ne $r2) {{ exit 0 }}
 exit 1
 """
     if _powershell_ok(script):
         return True
 
-    # 2) netsh via cmd.exe so quoting matches an interactive shell
     try:
-        cmdline = (
-            f'netsh advfirewall firewall show rule name="{TRANSFER_HUB_RULE_NAME}"'
-        )
+        cmdline = f'netsh advfirewall firewall show rule name="{name}"'
         r = subprocess.run(
             ["cmd.exe", "/c", cmdline],
             capture_output=True,
@@ -81,27 +75,25 @@ exit 1
             return False
         if "no rules match" in out:
             return False
-        return "rule name:" in out or TRANSFER_HUB_RULE_NAME.lower() in out
+        return "rule name:" in out or name.lower() in out
     except (OSError, subprocess.TimeoutExpired) as e:
         logger.warning("netsh firewall rule show failed: %s", e)
         return False
 
 
-def _inbound_tcp_port_allowed_powershell(port: int) -> bool:
-    """
-    Any enabled inbound allow rule for TCP port (walk rules → port filters).
-    """
+def _tcp_port_allowed_powershell(direction: str, port: int, use_local_port: bool) -> bool:
+    port_field = "LocalPort" if use_local_port else "RemotePort"
     script = rf"""
 $ErrorActionPreference = 'SilentlyContinue'
 $want = [int]{int(port)}
-Get-NetFirewallRule -Direction Inbound -ErrorAction SilentlyContinue |
+Get-NetFirewallRule -Direction {direction} -ErrorAction SilentlyContinue |
     Where-Object {{ $_.Enabled -eq $true -and $_.Action -eq 'Allow' }} |
     ForEach-Object {{
         $filters = $_ | Get-NetFirewallPortFilter -ErrorAction SilentlyContinue
         if ($null -eq $filters) {{ return }}
         foreach ($f in @($filters)) {{
             if ($f.Protocol -ne 'TCP') {{ continue }}
-            foreach ($p in @($f.LocalPort)) {{
+            foreach ($p in @($f.{port_field})) {{
                 try {{
                     if ([int]$p -eq $want) {{ exit 0 }}
                 }} catch {{ }}
@@ -114,15 +106,21 @@ exit 1
 
 
 def inbound_tcp_port_allowed(port: int = 5000) -> bool:
-    """
-    True if our named rule exists, or any enabled inbound allow rule for this TCP port.
-    Does not require admin. On non-Windows, always True.
-    """
+    """True if inbound allow exists for local TCP port."""
     if sys.platform != "win32":
         return True
-    if named_transfer_hub_rule_exists():
+    if _named_rule_exists(transfer_hub_inbound_rule_name(port)):
         return True
-    return _inbound_tcp_port_allowed_powershell(port)
+    return _tcp_port_allowed_powershell("Inbound", port, use_local_port=True)
+
+
+def outbound_tcp_port_allowed(port: int = 5000) -> bool:
+    """True if outbound allow exists for remote TCP port."""
+    if sys.platform != "win32":
+        return True
+    if _named_rule_exists(transfer_hub_outbound_rule_name(port)):
+        return True
+    return _tcp_port_allowed_powershell("Outbound", port, use_local_port=False)
 
 
 def wait_for_inbound_tcp_allowed(
@@ -150,14 +148,11 @@ def wait_for_inbound_tcp_allowed(
 
 
 def add_transfer_hub_rule_elevated(port: int = 5000) -> bool:
-    """
-    Launch an elevated netsh to add a named inbound allow rule. Shows UAC.
-    Returns True if ShellExecute started the process (user may still cancel UAC).
-    """
+    """Launch elevated netsh to add named inbound allow rule (local TCP port)."""
     if sys.platform != "win32":
         return True
 
-    name = TRANSFER_HUB_RULE_NAME.replace('"', '\\"')
+    name = transfer_hub_inbound_rule_name(port).replace('"', '\\"')
     params = (
         f'advfirewall firewall add rule name="{name}" '
         f"dir=in action=allow protocol=TCP localport={int(port)}"
@@ -178,4 +173,54 @@ def add_transfer_hub_rule_elevated(port: int = 5000) -> bool:
         return ok
     except Exception as e:
         logger.error("Could not launch elevated netsh: %s", e)
+        return False
+
+
+def wait_for_outbound_tcp_allowed(
+    port: int = 5000,
+    timeout_s: float = 15.0,
+    interval_s: float = 0.25,
+) -> bool:
+    """Poll until outbound_tcp_port_allowed is true or timeout."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if outbound_tcp_port_allowed(port):
+            return True
+        time.sleep(interval_s)
+    ok = outbound_tcp_port_allowed(port)
+    if not ok:
+        logger.warning(
+            "Outbound firewall check still failing after %.1fs wait (port %s).",
+            timeout_s,
+            port,
+        )
+    return ok
+
+
+def add_upload_file_rule_elevated(port: int = 5000) -> bool:
+    """Launch elevated netsh to add named outbound allow rule (remote TCP port)."""
+    if sys.platform != "win32":
+        return True
+
+    name = transfer_hub_outbound_rule_name(port).replace('"', '\\"')
+    params = (
+        f'advfirewall firewall add rule name="{name}" '
+        f"dir=out action=allow protocol=TCP remoteport={int(port)}"
+    )
+    try:
+        netsh = _netsh_exe()
+        ret = ctypes.windll.shell32.ShellExecuteW(
+            None,
+            "runas",
+            netsh,
+            params,
+            None,
+            1,
+        )
+        ok = ret > 32
+        if not ok:
+            logger.error("ShellExecute for outbound netsh failed with code %s", ret)
+        return ok
+    except Exception as e:
+        logger.error("Could not launch elevated outbound netsh: %s", e)
         return False

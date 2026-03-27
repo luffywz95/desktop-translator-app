@@ -29,8 +29,18 @@ default_settings = {
     "idle_opacity": 1,
     "current_img": None,
     "ocr_langs": "chi_sim+chi_sim_vert+chi_tra+chi_tra_vert+eng+kor+jpn+vie",
-    # Transfer Hub: listen on LAN (0.0.0.0) vs localhost only; requires firewall allow on Windows.
-    "transfer_hub_allow_lan": False,
+    # Receive files via Transfer Hub (inbound, LAN listener + inbound firewall rule).
+    "receive_file": {
+        "enable": False,
+        "port": 5000,
+    },
+    # Upload files to remote endpoint (outbound firewall rule + Upload tab defaults).
+    "upload_file": {
+        "enable": False,
+        "port": 5000,
+        "remote_url": "",
+        "remote_token": "",
+    },
 }
 
 
@@ -93,6 +103,15 @@ class StorageEngine:
         else:
             merged = default_state.copy()
             merged.update(raw_state)
+            # Deep-merge nested hub settings so new keys (e.g. remote_url) aren't dropped.
+            for nested_key in ("receive_file", "upload_file"):
+                base = default_state.get(nested_key)
+                if isinstance(base, dict):
+                    cur = merged.get(nested_key)
+                    m = base.copy()
+                    if isinstance(cur, dict):
+                        m.update(cur)
+                    merged[nested_key] = m
             raw_state = merged
         # In-memory only; never restore a PIL image from LMDB.
         raw_state["current_img"] = None
