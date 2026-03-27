@@ -1,9 +1,6 @@
 # run this command to install the requirements: 
 # pip install -r requirements.txt
 
-# run this command to install the requirements: 
-# pip install -r requirements.txt
-
 customtkinter==5.2.2
 tkinterdnd2==0.4.3
 Pillow==12.1.1
@@ -16,3 +13,13 @@ pyttsx3==2.99
 pywin32==311
 lmdb==1.8.1
 Flask==3.1.3
+
+sockets==1.0.0
+# Upload tab → Mobile: Bluetooth (Windows WinRT)
+winrt-runtime==3.2.1
+winrt-Windows.Devices.Bluetooth==3.2.1
+winrt-Windows.Devices.Bluetooth.Rfcomm==3.2.1
+winrt-Windows.Devices.Enumeration==3.2.1
+winrt-Windows.Foundation==3.2.1
+winrt-Windows.Networking.Sockets==3.2.1
+winrt-Windows.Storage.Streams==3.2.1
