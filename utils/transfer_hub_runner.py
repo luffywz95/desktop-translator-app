@@ -8,9 +8,9 @@ import subprocess
 import sys
 import time
 
-from components.logger import Logger
+from utils.logger import Logger
 
-logger = Logger().get()
+logger = Logger(file_name="transfer_hub").get()
 
 _proc: subprocess.Popen | None = None
 

@@ -9,7 +9,7 @@ if _root not in sys.path:
 from flask import Flask, jsonify, render_template, request  # noqa: E402
 from werkzeug.utils import secure_filename  # noqa: E402
 
-from components.logger import Logger  # noqa: E402
+from utils.logger import Logger  # noqa: E402
 
 # --- Transfer Hub: image + generic file uploads (separate folders & handlers) ---
 
@@ -27,7 +27,7 @@ app = Flask(
     template_folder=os.path.join(_root, "templates"),
 )
 
-logger = Logger().get()
+logger = Logger(file_name="transfer_hub").get()
 
 
 def _ext_ok(filename: str, allowed: frozenset[str]) -> bool:
