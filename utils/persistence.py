@@ -41,6 +41,11 @@ default_settings = {
         "remote_url": "",
         "remote_token": "",
     },
+    # Last Bluetooth OBEX upload target (WinRT device id + display name).
+    "bluetooth_upload": {
+        "device_id": "",
+        "name": "",
+    },
 }
 
 
@@ -104,7 +109,7 @@ class StorageEngine:
             merged = default_state.copy()
             merged.update(raw_state)
             # Deep-merge nested hub settings so new keys (e.g. remote_url) aren't dropped.
-            for nested_key in ("receive_file", "upload_file"):
+            for nested_key in ("receive_file", "upload_file", "bluetooth_upload"):
                 base = default_state.get(nested_key)
                 if isinstance(base, dict):
                     cur = merged.get(nested_key)

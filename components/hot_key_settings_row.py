@@ -1,5 +1,6 @@
 import customtkinter as ctk
 
+from components.info_button import InfoButton
 from components.tooltip import ToolTip
 
 
@@ -61,21 +62,10 @@ class HotkeySettingRow(ctk.CTkFrame):
             )
 
         if tooltip_text is not None:
-            # 5. Info Button
-            self.info_btn = ctk.CTkButton(
+            InfoButton(
                 controls_frame,
-                text="ⓘ",
-                width=25,
-                height=25,
-                fg_color="transparent",
-                text_color="#3498db",
-                font=("Arial", 14, "bold"),
-                hover_color="#333333",
-            )
-            self.info_btn.pack(side="left", padx=(0, 5))
-
-            # Add Tooltip
-            ToolTip(self.info_btn, tooltip_text)
+                tooltip_text,
+            ).pack(side="left", padx=(0, 5))
 
     def get_settings(self):
         """Helper to retrieve the current state of this row"""

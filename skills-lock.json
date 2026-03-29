@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "skills": {
+    "gws-docs": {
+      "source": "googleworkspace/cli",
+      "sourceType": "github",
+      "computedHash": "c7a37def48dff56af458c9fea82be718e8d500cf0cb70fd21b9569f795e348d3"
+    },
+    "gws-sheets": {
+      "source": "googleworkspace/cli",
+      "sourceType": "github",
+      "computedHash": "5ff055ea0baea78ffef1ef04a702967f484cedb1c7615583624a208179971e71"
+    },
+    "modular-code": {
+      "source": "parcadei/continuous-claude-v3",
+      "sourceType": "github",
+      "computedHash": "494b7b470eadfa3f4ad4eaa27c7789c682e1162e8ae328bb57e2fd5d7fa41513"
+    },
+    "python-code-style": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "computedHash": "c375dffa8d94962e10193079af1527b149f43b68d60043830d89cbce1228cec7"
+    },
+    "python-design-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "computedHash": "8646a52fb34f1b88954aa84c86d5de04fbda1f415e509045c7f3ffff5886ded4"
+    }
+  }
+}

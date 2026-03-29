@@ -7,7 +7,8 @@ import logging.handlers
 class Logger:
     _logger = None
 
-    def __init__(self):
+    def __init__(self, file_name: str = "app"):
+        self.file_name = file_name
         self.setup()
 
     def setup(self):
@@ -16,7 +17,7 @@ class Logger:
             self._logger.setLevel(logging.INFO)
             os.makedirs("logs", exist_ok=True)
             handler = logging.handlers.RotatingFileHandler(
-                f"logs/{__name__}_{datetime.now().strftime('%Y-%m-%d')}.log",
+                f"logs/{self.file_name}_{datetime.now().strftime('%Y-%m-%d')}.log",
                 maxBytes=1024 * 1024,
                 backupCount=5,
             )
