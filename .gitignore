@@ -4,13 +4,14 @@
 zzt/
 
 logs/
-__pycache__/
-*- Shortcut.lnk
-app.pid
-.env
 design/
-
 backup/
 storage/
 received/
 operations/
+
+__pycache__/
+*- Shortcut.lnk
+.env
+app.pid
+skills-lock.json

@@ -144,7 +144,7 @@ def build_main_ui(app, lang_map: dict, settings: dict, dnd_files: str) -> None:
     app.voice_btn.pack(side="left", fill="x", padx=(5, 0))
 
     upload_shell = app.tab_frame.tab("Upload")
-    build_upload_tab_controls(app, upload_shell, settings)
+    build_upload_tab_controls(app, upload_shell, settings, dnd_files)
 
     convert_shell = app.tab_frame.tab("Convert Image")
     convert_shell.grid_columnconfigure(0, weight=1)
