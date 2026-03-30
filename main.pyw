@@ -39,6 +39,7 @@ from app.controllers.upload_bluetooth_controller import (
     upload_bluetooth_browse,
     upload_bluetooth_doctor,
     upload_bluetooth_send_bt,
+    upload_bluetooth_handle_drop,
 )
 from app.controllers.upload_remote_controller import run_upload_tab_send
 from app.ui import build_main_ui, build_menu, build_settings_modal
@@ -767,8 +768,11 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
     def _upload_bluetooth_browse(self) -> None:
         upload_bluetooth_browse(self)
 
-    def _update_upload_bluetooth_preview(self, path: str) -> None:
-        update_upload_bluetooth_preview(self, path)
+    def _upload_bluetooth_handle_drop(self, event) -> None:
+        upload_bluetooth_handle_drop(self, event)
+
+    def _update_upload_bluetooth_preview(self) -> None:
+        update_upload_bluetooth_preview(self)
 
     def _upload_bluetooth_send_bt(self) -> None:
         upload_bluetooth_send_bt(self, logger=logger, settings=settings)
