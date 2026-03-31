@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import customtkinter as ctk
 
+from components.ctk_scrollable_helpers import attach_scrollbar_auto_hide
 from components.hot_key_settings_row import HotkeySettingRow
 from components.tooltip import ToolTip
 
@@ -22,6 +23,7 @@ def build_settings_modal(app, settings: dict) -> None:
     )
     app.settings_panel.pack(fill="both", expand=True, pady=(10, 0), padx=10)
     app.settings_panel._label.grid_configure(pady=(5, 5), padx=20)
+    attach_scrollbar_auto_hide(app.settings_panel, app.settings_modal)
 
     app.application_invoke_hotkey_row = HotkeySettingRow(
         app.settings_panel,

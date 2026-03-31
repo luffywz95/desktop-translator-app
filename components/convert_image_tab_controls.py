@@ -22,6 +22,10 @@ from app.controllers.convert_image_controller import (
     update_convert_quality_percent_label,
 )
 from app.services.image_convert_service import LOSSY_FORMATS, OUTPUT_FORMATS
+from components.ctk_scrollable_helpers import (
+    attach_scrollbar_auto_hide,
+    sync_scrollbar_visibility,
+)
 
 REFLOW_WIDE_PX = 800
 
@@ -64,8 +68,8 @@ def _section_card(parent: ctk.CTkFrame, title: str, **kwargs: Any) -> ctk.CTkFra
     ).pack(fill="x", padx=10, pady=3)
 
     inner = ctk.CTkScrollableFrame(card, fg_color="transparent")
-    inner._scrollbar.configure(height=0)
     inner.pack(fill="both", expand=True, padx=8, pady=(0, 10))
+    attach_scrollbar_auto_hide(inner)
     # Card must be placed on the parent; otherwise the whole section stays unmapped.
     card.pack(fill="both", expand=True)
     return inner
@@ -208,6 +212,7 @@ def _apply_convert_queue_inner_layout(app: Any, wide: bool) -> None:
     dr = getattr(app, "_convert_drop_redraw", None)
     if callable(dr):
         app.after_idle(dr)
+    app.after(25, lambda: sync_scrollbar_visibility(lst))
 
 
 def build_convert_image_tab_controls(
@@ -334,7 +339,7 @@ def _build_queue_panel(app: Any, panel: ctk.CTkFrame, dnd_files: str) -> None:
     app._convert_list_frame = ctk.CTkScrollableFrame(
         inner, height=LIST_H_NARROW, fg_color="transparent"
     )
-    app._convert_list_frame._scrollbar.configure(height=0)
+    attach_scrollbar_auto_hide(app._convert_list_frame)
 
     app._convert_queue_toolbar_wide = ctk.CTkFrame(inner, fg_color="transparent")
     tw = app._convert_queue_toolbar_wide
