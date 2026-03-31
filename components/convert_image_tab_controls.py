@@ -302,8 +302,8 @@ def build_convert_image_tab_controls(
             outer.grid_columnconfigure(2, weight=1, minsize=0)
             # Row 0: queue band — fixed height; rows 1–2 take remaining space.
             outer.grid_rowconfigure(0, weight=1)
-            outer.grid_rowconfigure(1, weight=1)
-            outer.grid_rowconfigure(2, weight=1)
+            outer.grid_rowconfigure(1, weight=2)
+            outer.grid_rowconfigure(2, weight=2)
             panel_q.configure(height=PANEL_QUEUE_HEIGHT_NARROW)
             panel_q.grid_propagate(False)
             panel_q.grid(row=0, column=0, sticky="nsew", pady=(0, 10))
@@ -339,7 +339,12 @@ def _build_queue_panel(app: Any, panel: ctk.CTkFrame, dnd_files: str) -> None:
     app._convert_list_frame = ctk.CTkScrollableFrame(
         inner, height=LIST_H_NARROW, fg_color="transparent"
     )
+    app._convert_list_frame._scrollbar.configure(height=LIST_H_NARROW)
     attach_scrollbar_auto_hide(app._convert_list_frame)
+    app._convert_queue_list_host = ctk.CTkFrame(
+        app._convert_list_frame, fg_color="transparent"
+    )
+    app._convert_queue_list_host.pack(fill="both", expand=True)
 
     app._convert_queue_toolbar_wide = ctk.CTkFrame(inner, fg_color="transparent")
     tw = app._convert_queue_toolbar_wide

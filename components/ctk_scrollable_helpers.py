@@ -25,13 +25,6 @@ def sync_scrollbar_visibility(scrollable: "ctk.CTkScrollableFrame") -> None:
         content_h = bbox[3] - bbox[1]
 
     needs_scroll = content_h > (ch + 1)
-    if not needs_scroll:
-        try:
-            first, last = canvas.yview()
-            if (last - first) < 0.995:
-                needs_scroll = True
-        except Exception:
-            pass
 
     sb = scrollbar
     if needs_scroll:

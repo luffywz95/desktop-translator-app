@@ -10,6 +10,7 @@ import customtkinter as ctk
 from PIL import Image
 
 from components.loading_overlay import BusyOverlay
+from components.ctk_scrollable_helpers import sync_scrollbar_visibility
 from app.services.bluetooth_doctor_service import (
     BluetoothDoctorSnapshot,
     collect_bluetooth_doctor_snapshot,
@@ -276,6 +277,14 @@ def update_upload_bluetooth_preview(app: Any) -> None:
             text_color="gray",
         )
         app.upload_bluetooth_empty_label.pack(expand=True, fill="both", pady=40)
+        list_frame = getattr(app, "upload_bluetooth_list_frame", None)
+        if list_frame is not None and list_frame.winfo_exists():
+            try:
+                # Reset stale scroll position before visibility sync.
+                list_frame._parent_canvas.yview_moveto(0.0)
+            except Exception:
+                pass
+            sync_scrollbar_visibility(list_frame)
         return
 
     for p in paths:
@@ -302,6 +311,15 @@ def update_upload_bluetooth_preview(app: Any) -> None:
             command=lambda path=p: _remove_bluetooth_file(app, path),
         )
         close_btn.grid(row=0, column=2, padx=(6, 0), sticky="e")
+
+    list_frame = getattr(app, "upload_bluetooth_list_frame", None)
+    if list_frame is not None and list_frame.winfo_exists():
+        try:
+            # Keep visibility logic deterministic after list mutations.
+            list_frame._parent_canvas.yview_moveto(0.0)
+        except Exception:
+            pass
+        sync_scrollbar_visibility(list_frame)
 
 
 def upload_bluetooth_send_bt(app: Any, *, logger: Logger, settings: Any) -> None:

@@ -7,6 +7,7 @@ from components.text_tab_controls import build_text_tab_controls
 from components.tooltip import ToolTip
 from components.convert_image_tab_controls import build_convert_image_tab_controls
 from components.upload_tab_controls import build_upload_tab_controls
+from components.web_crawler_tab_controls import build_web_crawler_tab_controls
 
 
 def build_main_ui(app, lang_map: dict, settings: dict, dnd_files: str) -> None:
@@ -22,8 +23,14 @@ def build_main_ui(app, lang_map: dict, settings: dict, dnd_files: str) -> None:
     app.tab_frame.add("Translation")
     app.tab_frame.add("Upload")
     app.tab_frame.add("Convert Image")
+    app.tab_frame.add("Web Crawler")
 
-    _top_tab_widths = {"Translation": 98, "Upload": 72, "Convert Image": 118}
+    _top_tab_widths = {
+        "Translation": 98,
+        "Upload": 72,
+        "Convert Image": 118,
+        "Web Crawler": 114,
+    }
     for name, button in app.tab_frame._segmented_button._buttons_dict.items():
         button.configure(
             width=_top_tab_widths.get(str(name), 90),
@@ -150,3 +157,8 @@ def build_main_ui(app, lang_map: dict, settings: dict, dnd_files: str) -> None:
     convert_shell.grid_columnconfigure(0, weight=1)
     convert_shell.grid_rowconfigure(0, weight=1)
     build_convert_image_tab_controls(app, convert_shell, dnd_files)
+
+    crawler_shell = app.tab_frame.tab("Web Crawler")
+    crawler_shell.grid_columnconfigure(0, weight=1)
+    crawler_shell.grid_rowconfigure(0, weight=1)
+    build_web_crawler_tab_controls(app, crawler_shell)

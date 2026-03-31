@@ -11,6 +11,8 @@ import customtkinter as ctk
 from PIL import Image
 
 from app.services import image_convert_service as ics
+from components.ctk_scrollable_helpers import sync_scrollbar_visibility
+from components.hover_marquee_label import HoverMarqueeClipLabel
 
 
 def _unique_dest_path(folder: str, base: str, ext: str) -> str:
@@ -53,12 +55,32 @@ def _refresh_queue_list(app: Any) -> None:
     ff = getattr(app, "_convert_list_frame", None)
     if ff is None or not ff.winfo_exists():
         return
-    for w in ff.winfo_children():
+    host = getattr(app, "_convert_queue_list_host", None)
+    if host is None or not host.winfo_exists():
+        return
+    for w in host.winfo_children():
         w.destroy()
     app._convert_thumb_refs = []
+    if not app._convert_queue:
+        ctk.CTkLabel(
+            host,
+            text="No file(s) selected\n(Browse or drop to choose file(s))",
+            text_color="gray",
+        ).pack(expand=True, fill="both", pady=12)
+        _update_input_summary(app)
+        _sync_run_button(app)
+        try:
+            ff._parent_canvas.yview_moveto(0.0)
+        except Exception:
+            pass
+        sync_scrollbar_visibility(ff)
+        return
+
     for i, path in enumerate(app._convert_queue):
-        r = ctk.CTkFrame(ff, fg_color="transparent")
-        r.pack(fill="x", pady=2)
+        r = ctk.CTkFrame(host, fg_color="transparent")
+        r.pack(fill="x", pady=2, padx=4)
+        r.grid_columnconfigure(1, weight=1)  # Marquee name takes remaining width.
+        r.grid_columnconfigure(2, weight=0)  # Close button keeps fixed width.
 
         thumb_img = None
         try:
@@ -75,31 +97,36 @@ def _refresh_queue_list(app: Any) -> None:
                 size=(44, 44),
             )
             app._convert_thumb_refs.append(thumb_img)
+            ctk.CTkLabel(r, text="", image=thumb_img, width=44, height=44).grid(
+                row=0, column=0, padx=(0, 8), sticky="nw"
+            )
         except Exception:
             ph = ctk.CTkFrame(r, width=44, height=44, fg_color=("gray75", "gray30"))
-            ph.pack(side="left", padx=(0, 8))
             ph.pack_propagate(False)
-        else:
-            ctk.CTkLabel(r, text="", image=thumb_img, width=44, height=44).pack(
-                side="left", padx=(0, 8)
-            )
+            ph.grid(row=0, column=0, padx=(0, 8), sticky="nw")
 
-        ctk.CTkLabel(
-            r,
-            text=os.path.basename(path),
-            anchor="w",
-            font=("Segoe UI", 11),
-        ).pack(side="left", fill="x", expand=True)
+        HoverMarqueeClipLabel(
+            r, text=os.path.basename(path), font=("Segoe UI", 11)
+        ).grid(row=0, column=1, sticky="ew")
         ctk.CTkButton(
             r,
-            text="×",
-            width=28,
+            text="✕",
+            width=24,
+            height=24,
+            fg_color="transparent",
+            hover_color=("#d3d3d3", "#4d4d4d"),
+            text_color=("gray10", "gray90"),
             font=("Segoe UI", 12, "bold"),
             command=lambda idx=i: convert_tab_remove_at(app, idx),
-        ).pack(side="right", padx=(4, 0))
+        ).grid(row=0, column=2, padx=(6, 0), sticky="e")
 
     _update_input_summary(app)
     _sync_run_button(app)
+    try:
+        ff._parent_canvas.yview_moveto(0.0)
+    except Exception:
+        pass
+    sync_scrollbar_visibility(ff)
 
 
 def _sync_run_button(app: Any) -> None:
@@ -107,10 +134,10 @@ def _sync_run_button(app: Any) -> None:
     if btn is None or not btn.winfo_exists():
         return
     folder = getattr(app, "_convert_output_folder_var", None)
-    folder_ok = bool(folder and folder.get().strip() and os.path.isdir(folder.get().strip()))
-    btn.configure(
-        state="normal" if app._convert_queue and folder_ok else "disabled"
+    folder_ok = bool(
+        folder and folder.get().strip() and os.path.isdir(folder.get().strip())
     )
+    btn.configure(state="normal" if app._convert_queue and folder_ok else "disabled")
 
 
 def convert_tab_remove_at(app: Any, index: int) -> None:

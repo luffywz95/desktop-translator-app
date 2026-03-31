@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-from tkinter import messagebox
+from tkinter import filedialog, messagebox
 from typing import Any
 
 from dataclasses import dataclass
@@ -67,3 +67,15 @@ def run_upload_tab_send(app: Any) -> None:
         app.after(0, done)
 
     threading.Thread(target=work, daemon=True).start()
+
+
+def upload_tab_browse(app: Any) -> None:
+    path = filedialog.askopenfilename(
+        parent=app,
+        title="Choose file to upload",
+        filetypes=[("All files", "*.*")],
+    )
+    if path:
+        app._upload_local_path = path
+        app.upload_tab_path_entry.delete(0, "end")
+        app.upload_tab_path_entry.insert(0, path)

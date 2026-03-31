@@ -1,14 +1,11 @@
-from logging import Logger
 import os
 import customtkinter as ctk
-from tkinter import filedialog, messagebox
+from tkinter import messagebox
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from tkinterdnd2.TkinterDnD import _require as _require_tkdnd
-from PIL import Image, ImageTk
+from PIL import Image
 import pytesseract
 import keyboard
-import pyperclip
-import threading
 import time
 import ctypes
 import socket
@@ -18,30 +15,19 @@ import win32gui
 import win32process
 import win32api
 import win32con
-from typing import Any
+from components.loading_overlay import BusyOverlay
 
-from components.loading_overlay import BusyOverlay, run_blocking_task_with_busy_ui
-
-from app.services.image_source_service import fetch_url_as_image
-from app.services.ocr_translation_service import (
-    run_ocr_then_translate,
-    run_translate_text,
-)
 from app.services.speech_service import (
     get_installed_voices,
-    speech_worker,
-    voice_id_for_languages,
 )
 from app.controllers import bluetooth_picker_controller as bt_picker
+from app.controllers import app_actions_controller as app_actions
 from app.controllers import image_source_controller as image_actions
-from app.controllers.upload_bluetooth_controller import (
-    update_upload_bluetooth_preview,
-    upload_bluetooth_browse,
-    upload_bluetooth_doctor,
-    upload_bluetooth_send_bt,
-    upload_bluetooth_handle_drop,
-)
-from app.controllers.upload_remote_controller import run_upload_tab_send
+from app.controllers import settings_controller as settings_actions
+from app.controllers import text_processing_controller as text_actions
+from app.controllers import upload_bluetooth_controller as bt_upload_actions
+from app.controllers import upload_remote_controller as remote_upload_actions
+from app.controllers import web_crawler_controller as web_crawler_actions
 from app.ui import build_main_ui, build_menu, build_settings_modal
 from app.state.context import build_context
 from app.state.transfer_settings import (
@@ -108,8 +94,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         )
 
         self.title("The Owl Nexus (By Sam·D·Leung)")
-        self.geometry("400x600")
-        self.minsize(400, 650)
+        self.geometry("420x700")
+        self.minsize(420, 700)
         ctk.set_appearance_mode("system")
 
         self._hotkey_handle_capture = None
@@ -308,231 +294,11 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         settings["settings_open"] = False
 
         if save:
-            settings.begin_batch()
-            try:
-                old_receive = normalized_receive_file(settings)
-                old_upload = normalized_upload_file(settings)
-
-                application_invoke_hotkey = (
-                    self.application_invoke_hotkey_row.key_input.get().lower()
-                )
-                if application_invoke_hotkey:
-                    settings["hotkey_settings"]["application_invoke_hotkey"][
-                        "hotkey"
-                    ] = "ctrl+shift+" + application_invoke_hotkey
-                    if self._hotkey_handle_application_invoke:
-                        keyboard.remove_hotkey(self._hotkey_handle_application_invoke)
-                    self._hotkey_handle_application_invoke = keyboard.add_hotkey(
-                        settings["hotkey_settings"]["application_invoke_hotkey"][
-                            "hotkey"
-                        ],
-                        lambda: self.after(0, show_app_request),
-                    )
-
-                settings["hotkey_settings"]["background_process_hotkey"]["enable"] = (
-                    self.background_process_hotkey_row.enabled_var.get()
-                )
-
-                background_process_hotkey = (
-                    self.background_process_hotkey_row.key_input.get().lower()
-                )
-                if background_process_hotkey:
-                    settings["hotkey_settings"]["background_process_hotkey"][
-                        "hotkey"
-                    ] = "ctrl+shift+" + background_process_hotkey
-
-                settings["enable_focus_dim"] = self.dim_var.get()
-                settings["idle_opacity"] = self.opacity_val.get()
-                _rp = self._get_port_or_default(self.receive_file_port_var.get(), 5000)
-                _up = self._get_port_or_default(self.upload_file_port_var.get(), 5000)
-                self.receive_file_port_var.set(str(_rp))
-                self.upload_file_port_var.set(str(_up))
-
-                new_r_en = bool(self.receive_file_var.get())
-                new_u_en = bool(self.upload_file_var.get())
-
-                if sys.platform == "win32":
-                    from utils.windows_firewall import (
-                        apply_inbound_transfer_rule_elevated,
-                        apply_outbound_transfer_rule_elevated,
-                        inbound_tcp_port_allowed,
-                        outbound_tcp_port_allowed,
-                        preview_inbound_transfer_firewall_action,
-                        preview_outbound_transfer_firewall_action,
-                        wait_for_inbound_tcp_allowed,
-                        wait_for_outbound_tcp_allowed,
-                    )
-
-                    user_wants_fw_check = False
-                    if new_r_en or new_u_en:
-                        user_wants_fw_check = messagebox.askyesno(
-                            "Windows Firewall",
-                            "At least one file transfer port is enabled. Do you want this app to "
-                            "check Windows Firewall and add or update TCP rules for those ports "
-                            "if needed?\n\n"
-                            "This can take a moment and may show a Windows administrator prompt.\n\n"
-                            "Choose No to save without checking or changing firewall rules.",
-                        )
-
-                    if user_wants_fw_check:
-
-                        def _fw_gather() -> dict[str, Any]:
-                            need_apply_receive = False
-                            if new_r_en:
-                                if _rp != old_receive["port"]:
-                                    need_apply_receive = True
-                                else:
-                                    need_apply_receive = not inbound_tcp_port_allowed(_rp)
-
-                            need_apply_upload = False
-                            if new_u_en:
-                                if _up != old_upload["port"]:
-                                    need_apply_upload = True
-                                else:
-                                    need_apply_upload = not outbound_tcp_port_allowed(_up)
-
-                            recv_action, recv_remove_names = ("noop", [])
-                            if need_apply_receive:
-                                recv_action, recv_remove_names = (
-                                    preview_inbound_transfer_firewall_action(int(_rp))
-                                )
-
-                            upload_action, upload_remove_names = ("noop", [])
-                            if need_apply_upload:
-                                upload_action, upload_remove_names = (
-                                    preview_outbound_transfer_firewall_action(int(_up))
-                                )
-                            return {
-                                "need_apply_receive": need_apply_receive,
-                                "need_apply_upload": need_apply_upload,
-                                "recv_action": recv_action,
-                                "recv_remove_names": recv_remove_names,
-                                "upload_action": upload_action,
-                                "upload_remove_names": upload_remove_names,
-                            }
-
-                        st = run_blocking_task_with_busy_ui(
-                            self,
-                            self._busy_overlay,
-                            "Checking Windows Firewall…",
-                            _fw_gather,
-                        )
-                        need_apply_receive = st["need_apply_receive"]
-                        need_apply_upload = st["need_apply_upload"]
-                        recv_action = st["recv_action"]
-                        recv_remove_names = st["recv_remove_names"]
-                        upload_action = st["upload_action"]
-                        upload_remove_names = st["upload_remove_names"]
-
-                        will_elevate_receive = need_apply_receive and recv_action != "noop"
-                        will_elevate_upload = need_apply_upload and upload_action != "noop"
-
-                        if not need_apply_receive and not need_apply_upload:
-                            messagebox.showinfo(
-                                "Windows Firewall",
-                                "No changes were needed; the TCP ports you selected are already "
-                                "allowed.",
-                            )
-                        elif not will_elevate_receive and not will_elevate_upload:
-                            messagebox.showinfo(
-                                "Windows Firewall",
-                                "No changes were needed for this app's firewall rules.",
-                            )
-                        else:
-                            rules_to_remove: list[str] = []
-                            if recv_action == "replace" and recv_remove_names:
-                                rules_to_remove.extend(recv_remove_names)
-                            if upload_action == "replace" and upload_remove_names:
-                                rules_to_remove.extend(upload_remove_names)
-                            seen_rm: set[str] = set()
-                            deduped_remove = []
-                            for n in rules_to_remove:
-                                if n not in seen_rm:
-                                    seen_rm.add(n)
-                                    deduped_remove.append(n)
-
-                            if deduped_remove:
-                                listed = "\n".join(f"  • {n}" for n in deduped_remove)
-                                if not messagebox.askyesno(
-                                    "Windows Firewall",
-                                    "The following existing firewall rules for this app will be "
-                                    f"removed:\n{listed}\n\n"
-                                    "New rules will be added for the TCP ports you enabled. "
-                                    "Continue?",
-                                ):
-                                    if recv_action == "replace":
-                                        will_elevate_receive = False
-                                    if upload_action == "replace":
-                                        will_elevate_upload = False
-
-                            if will_elevate_receive or will_elevate_upload:
-                                messagebox.showinfo(
-                                    "Firewall",
-                                    "If a Windows administrator prompt appears, approve it to "
-                                    "add or update rules.\n\n"
-                                    "Click OK when done so we can verify the changes.",
-                                )
-                                if will_elevate_receive:
-                                    if not apply_inbound_transfer_rule_elevated(
-                                        int(old_receive["port"]), int(_rp)
-                                    ):
-                                        messagebox.showerror(
-                                            "Firewall",
-                                            "Could not start the firewall rule setup.",
-                                        )
-                                        new_r_en = False
-                                        self.receive_file_var.set(False)
-                                    elif not run_blocking_task_with_busy_ui(
-                                        self,
-                                        self._busy_overlay,
-                                        "Verifying Windows Firewall…",
-                                        lambda: wait_for_inbound_tcp_allowed(_rp),
-                                    ):
-                                        messagebox.showwarning(
-                                            "Firewall",
-                                            "Could not confirm the firewall rules. If you cancelled an "
-                                            "administrator prompt, try again. You can also adjust "
-                                            "rules manually in Windows Defender Firewall.",
-                                        )
-                                        new_r_en = False
-                                        self.receive_file_var.set(False)
-                                if will_elevate_upload:
-                                    if not apply_outbound_transfer_rule_elevated(
-                                        int(old_upload["port"]), int(_up)
-                                    ):
-                                        messagebox.showerror(
-                                            "Firewall",
-                                            "Could not start the firewall rule setup.",
-                                        )
-                                        new_u_en = False
-                                        self.upload_file_var.set(False)
-                                    elif not run_blocking_task_with_busy_ui(
-                                        self,
-                                        self._busy_overlay,
-                                        "Verifying Windows Firewall…",
-                                        lambda: wait_for_outbound_tcp_allowed(_up),
-                                    ):
-                                        messagebox.showwarning(
-                                            "Firewall",
-                                            "Could not confirm the firewall rules. If you cancelled an "
-                                            "administrator prompt, try again. You can also adjust "
-                                            "rules manually in Windows Defender Firewall.",
-                                        )
-                                        new_u_en = False
-                                        self.upload_file_var.set(False)
-
-                self._persist_transfer_hub_atomic(
-                    {"enable": new_r_en, "port": _rp},
-                    {
-                        "enable": new_u_en,
-                        "port": _up,
-                        "remote_url": self.upload_tab_url_entry.get().strip(),
-                        "remote_token": self.upload_tab_token_entry.get(),
-                    },
-                )
-            finally:
-                settings.commit()
-            self._restart_transfer_hub_if_visible()
+            settings_actions.save_settings_from_modal(
+                self,
+                settings=settings,
+                show_app_request=show_app_request,
+            )
 
         if self.mask_layer:
             self.mask_layer.destroy()
@@ -645,9 +411,6 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
     def _choose_from_url_menu(self):
         self._show_url_entry()
 
-    def _fetch_url_as_image(self, url: str) -> Image.Image:
-        return fetch_url_as_image(url)
-
     def _load_image_from_url_async(self) -> None:
         image_actions.load_image_from_url_async(self, settings=settings, logger=logger)
 
@@ -662,82 +425,20 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
     # --- OCR Logic ---
     def process_image(self):
-        if settings["current_img"]:
-            self.result_box.delete("1.0", "end")
-            self.result_box.insert("1.0", "⚙️ Processing...")
-            thumb = settings["current_img"].copy()
-            thumb.thumbnail((500, 220))
-            # Use a Tk PhotoImage and store it as an instance attribute
-            # to prevent garbage collection issues across multiple updates.
-            self.display_img = ImageTk.PhotoImage(thumb)
-            self.img_zone.configure(image=self.display_img, text="")
-
-            threading.Thread(target=self._ocr_worker, daemon=True).start()
-
-    def _ocr_worker(self):
-        try:
-            text = run_ocr_then_translate(
-                image=settings["current_img"],
-                ocr_langs=settings["ocr_langs"],
-                enable_translation=bool(settings["enable_translation"]),
-                target_code=LANG_MAP[settings["target_lang"]]["trans_lang"],
-            )
-            self.after(0, lambda: self._update_results(text))
-        except Exception as e:
-            self.after(
-                0, lambda msg=str(e): self.result_box.insert("end", f"\nError: {msg}")
-            )
+        text_actions.process_image(self, settings=settings, lang_map=LANG_MAP)
 
     # --- Translation Logic ---
     def translate_text(self):
-        try:
-            text = self.trans_text_editor.get("1.0", "end")
-            if not text:
-                return
-
-            if not settings["enable_translation"]:
-                return self.after(0, lambda: self._update_results(text))
-
-            # 2. Immediate UI Feedback
-            self.result_box.delete("1.0", "end")
-            self.result_box.insert("1.0", "🌐 Translating...")
-
-            threading.Thread(
-                target=self._translation_worker, args=(text,), daemon=True
-            ).start()
-        except Exception as e:
-            logger.error(f"Translation Setup Error: {e}")
-
-    def _translation_worker(self, text):
-        try:
-            target_lang = settings["target_lang"]
-            target_code = LANG_MAP[target_lang]["trans_lang"]
-            translation_result = run_translate_text(text, target_code)
-
-            self.after(0, lambda: self._update_results(translation_result))
-        except Exception as e:
-            logger.error(f"Translation Error: {e}")
-            self.after(
-                0, lambda msg=str(e): self._update_results(f"Translation Error: {msg}")
-            )
+        text_actions.translate_text(
+            self,
+            settings=settings,
+            lang_map=LANG_MAP,
+            logger=logger,
+        )
 
     # --- New Voice Logic ---
     def toggle_speech(self):
-        text = self.result_box.get("1.0", "end-1c").strip()
-        if not text or self.is_speaking:
-            # If already speaking, we could add stop logic here,
-            # but pyttsx3.stop() is notoriously unstable across threads.
-            return
-
-        threading.Thread(
-            target=speech_worker,
-            args=(self, text),
-            kwargs={"settings": settings, "logger": logger},
-            daemon=True,
-        ).start()
-
-    def _get_voice_id(self, voices, langs):
-        return voice_id_for_languages(voices, langs)
+        text_actions.toggle_speech(self, settings=settings, logger=logger)
 
     # --- Update results ---
     def _update_results(self, text):
@@ -766,46 +467,55 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         bt_picker.upload_bt_use_selected(self, logger=logger, settings=settings)
 
     def _upload_bluetooth_browse(self) -> None:
-        upload_bluetooth_browse(self)
+        bt_upload_actions.upload_bluetooth_browse(self)
 
     def _upload_bluetooth_handle_drop(self, event) -> None:
-        upload_bluetooth_handle_drop(self, event)
+        bt_upload_actions.upload_bluetooth_handle_drop(self, event)
 
     def _update_upload_bluetooth_preview(self) -> None:
-        update_upload_bluetooth_preview(self)
+        bt_upload_actions.update_upload_bluetooth_preview(self)
 
     def _upload_bluetooth_send_bt(self) -> None:
-        upload_bluetooth_send_bt(self, logger=logger, settings=settings)
+        bt_upload_actions.upload_bluetooth_send_bt(self, logger=logger, settings=settings)
 
     def _upload_bluetooth_doctor(self) -> None:
-        upload_bluetooth_doctor(self, logger=logger)
+        bt_upload_actions.upload_bluetooth_doctor(self, logger=logger)
 
     def _upload_tab_browse(self) -> None:
-        path = filedialog.askopenfilename(
-            parent=self,
-            title="Choose file to upload",
-            filetypes=[("All files", "*.*")],
-        )
-        if path:
-            self._upload_local_path = path
-            self.upload_tab_path_entry.delete(0, "end")
-            self.upload_tab_path_entry.insert(0, path)
+        remote_upload_actions.upload_tab_browse(self)
 
     def _upload_tab_send(self) -> None:
-        run_upload_tab_send(self)
+        remote_upload_actions.run_upload_tab_send(self)
+
+    def _web_crawler_browse_location(self) -> None:
+        web_crawler_actions.web_crawler_browse_location(self)
+
+    def _web_crawler_add_field(
+        self,
+        field_name: str = "",
+        selector: str = "",
+    ) -> None:
+        web_crawler_actions.web_crawler_add_field(
+            self,
+            field_name=field_name,
+            selector=selector,
+        )
+
+    def _web_crawler_start(self) -> None:
+        web_crawler_actions.web_crawler_start(self, logger=logger)
+
+    def _web_crawler_export(self) -> None:
+        web_crawler_actions.web_crawler_export_last(self)
+
+    def _web_crawler_view_items(self) -> None:
+        web_crawler_actions.web_crawler_view_items(self)
 
     def copy_result(self):
-        content = self.result_box.get("1.0", "end-1c")
-        if content:
-            pyperclip.copy(content)
+        app_actions.copy_result(self)
 
     # --- Install New Voice ---
     def _install_voice_ui(self):
-        """Opens Windows Settings directly to the Speech/Voice installation page."""
-        import subprocess
-
-        # This URI opens the 'Add a Voice' or Speech settings page directly on Windows 10/11
-        subprocess.Popen("start ms-settings:speech", shell=True)
+        app_actions.open_windows_voice_settings()
 
     def _get_voice_list(self):
         """Utility to get a list of installed voice names for the settings UI."""
