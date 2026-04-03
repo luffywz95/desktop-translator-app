@@ -1,0 +1,344 @@
+[
+{
+  "name": "",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp",
+  "category": ""
+},
+{
+  "name": "Used By | Static Paging | Endless Scroll Paging | Secret API token | Endless Button Paging | Graphql Background Requests | Forced New Tab Links | Product HTML Markup | Hidden Web Data | Local Storage | CSRF Token Locks | Cookies Based Login | Iframe Login | PDF Downloads | Cookie Popup | Example Block Page | Blocking Redirect for Invalid Referer | Persistent Cookie-Based blocking | Form File Attachment Download | AI Content Obfuscation | Challenge + File Download | Bad Encoding | Antibot Challenge",
+  "price": "",
+  "thumbnail": "https://cdn.scrapfly.io/0.0.322/www/public/svg/logo-dashboard.svg?version=0.0.322",
+  "category": ""
+},
+{
+  "name": "",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/men-running-shoes.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp | https://www.web-scraping.dev/assets/products/classic-leather-sneakers-white.webp | https://www.web-scraping.dev/assets/products/cat-ear-beanie-grey.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp",
+  "category": ""
+},
+{
+  "name": "",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp | https://www.web-scraping.dev/assets/products/dragon-potion.webp | https://www.web-scraping.dev/assets/products/hiking-boots-1.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp",
+  "category": ""
+},
+{
+  "name": "",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/classic-leather-sneakers-white.webp | https://www.web-scraping.dev/assets/products/cat-ear-beanie-grey.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp",
+  "category": ""
+},
+{
+  "name": "",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/dragon-potion.webp | https://www.web-scraping.dev/assets/products/hiking-boots-1.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/men-running-shoes.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp",
+  "category": ""
+},
+{
+  "name": "",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp",
+  "category": ""
+},
+{
+  "name": "Blue Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Blue Energy Potion | Women's High Heel Sandals | Red Energy Potion | Teal Energy Potion",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/blue-potion.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp",
+  "category": ""
+},
+{
+  "name": "Red Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Dark Red Energy Potion | Box of Chocolate Candy | Cat-Ear Beanie | Dragon Energy Potion",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/cat-ear-beanie-grey.webp | https://www.web-scraping.dev/assets/products/dragon-potion.webp",
+  "category": ""
+},
+{
+  "name": "Teal Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Hiking Boots for Outdoor Adventures | Dragon Energy Potion | Teal Energy Potion | Running Shoes for Men",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/hiking-boots-1.webp | https://www.web-scraping.dev/assets/products/dragon-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/men-running-shoes.webp",
+  "category": ""
+},
+{
+  "name": "Dark Red Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Blue Energy Potion | Teal Energy Potion | Blue Energy Potion | Red Energy Potion",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp | https://www.web-scraping.dev/assets/products/red-potion.webp",
+  "category": ""
+},
+{
+  "name": "Box of Chocolate Candy | Variants | Features | Packs | Reviews | Similar Products | Blue Energy Potion | Dragon Energy Potion | Dragon Energy Potion | Dark Red Energy Potion",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/orange-chocolate-box-small-1.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-small-2.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-small-3.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-small-4.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp | https://www.web-scraping.dev/assets/products/dragon-potion.webp | https://www.web-scraping.dev/assets/products/dragon-potion.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp",
+  "category": ""
+},
+{
+  "name": "",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp",
+  "category": ""
+},
+{
+  "name": "",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/hiking-boots-1.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/men-running-shoes.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp | https://www.web-scraping.dev/assets/products/classic-leather-sneakers-white.webp",
+  "category": ""
+},
+{
+  "name": "Box of Chocolate Candy | Variants | Features | Packs | Reviews | Similar Products | Women's High Heel Sandals | Red Energy Potion | Kids' Light-Up Sneakers | Red Energy Potion",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/orange-chocolate-box-small-1.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-small-2.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-small-3.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-small-4.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp | https://www.web-scraping.dev/assets/products/red-potion.webp",
+  "category": ""
+},
+{
+  "name": "Women's High Heel Sandals | Variants | Features | Packs | Reviews | Similar Products | Teal Energy Potion | Running Shoes for Men | Women's High Heel Sandals | Cat-Ear Beanie",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-2.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/men-running-shoes.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/cat-ear-beanie-grey.webp",
+  "category": ""
+},
+{
+  "name": "Teal Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Teal Energy Potion | Box of Chocolate Candy | Women's High Heel Sandals | Dark Red Energy Potion",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp",
+  "category": ""
+},
+{
+  "name": "Kids' Light-Up Sneakers | Variants | Features | Packs | Reviews | Similar Products | Red Energy Potion | Hiking Boots for Outdoor Adventures | Blue Energy Potion | Blue Energy Potion",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-2.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-3.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-4.webp | https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/hiking-boots-1.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp",
+  "category": ""
+},
+{
+  "name": "Running Shoes for Men | Variants | Features | Packs | Reviews | Similar Products | Dark Red Energy Potion | Dark Red Energy Potion | Red Energy Potion | Kids' Light-Up Sneakers",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/men-running-shoes.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp",
+  "category": ""
+},
+{
+  "name": "Teal Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Kids' Light-Up Sneakers | Running Shoes for Men | Dark Red Energy Potion | Classic Leather Sneakers",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp | https://www.web-scraping.dev/assets/products/men-running-shoes.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/classic-leather-sneakers-white.webp",
+  "category": ""
+},
+{
+  "name": "Red Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Dark Red Energy Potion | Dark Red Energy Potion | Dragon Energy Potion | Women's High Heel Sandals",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/dragon-potion.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp",
+  "category": ""
+},
+{
+  "name": "Teal Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Dragon Energy Potion | Classic Leather Sneakers | Cat-Ear Beanie | Hiking Boots for Outdoor Adventures",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/dragon-potion.webp | https://www.web-scraping.dev/assets/products/classic-leather-sneakers-white.webp | https://www.web-scraping.dev/assets/products/cat-ear-beanie-grey.webp | https://www.web-scraping.dev/assets/products/hiking-boots-1.webp",
+  "category": ""
+},
+{
+  "name": "Dark Red Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Teal Energy Potion | Women's High Heel Sandals | Women's High Heel Sandals | Running Shoes for Men",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/men-running-shoes.webp",
+  "category": ""
+},
+{
+  "name": "Dark Red Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Classic Leather Sneakers | Teal Energy Potion | Blue Energy Potion | Cat-Ear Beanie",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/classic-leather-sneakers-white.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp | https://www.web-scraping.dev/assets/products/cat-ear-beanie-grey.webp",
+  "category": ""
+},
+{
+  "name": "Box of Chocolate Candy | Variants | Features | Packs | Reviews | Similar Products | Dragon Energy Potion | Dark Red Energy Potion | Box of Chocolate Candy | Blue Energy Potion",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/cherry-chocolate-box-large-1.webp | https://www.web-scraping.dev/assets/products/cherry-chocolate-box-large-2.webp | https://www.web-scraping.dev/assets/products/cherry-chocolate-box-large-3.webp | https://www.web-scraping.dev/assets/products/cherry-chocolate-box-large-4.webp | https://www.web-scraping.dev/assets/products/dragon-potion.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp",
+  "category": ""
+},
+{
+  "name": "",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/red-potion.webp",
+  "category": ""
+},
+{
+  "name": "",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/classic-leather-sneakers-white.webp | https://www.web-scraping.dev/assets/products/cat-ear-beanie-grey.webp",
+  "category": ""
+},
+{
+  "name": "",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/cat-ear-beanie-grey.webp | https://www.web-scraping.dev/assets/products/hiking-boots-1.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/men-running-shoes.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp",
+  "category": ""
+},
+{
+  "name": "",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/hiking-boots-1.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/men-running-shoes.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp | https://www.web-scraping.dev/assets/products/classic-leather-sneakers-white.webp",
+  "category": ""
+},
+{
+  "name": "",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/blue-potion.webp | https://www.web-scraping.dev/assets/products/dragon-potion.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp",
+  "category": ""
+},
+{
+  "name": "",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/dragon-potion.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/red-potion.webp",
+  "category": ""
+},
+{
+  "name": "",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp",
+  "category": ""
+},
+{
+  "name": "Box of Chocolate Candy | Variants | Features | Packs | Reviews | Similar Products | Blue Energy Potion | Teal Energy Potion | Cat-Ear Beanie | Box of Chocolate Candy",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/cherry-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/cherry-chocolate-box-medium-2.webp | https://www.web-scraping.dev/assets/products/cherry-chocolate-box-medium-3.webp | https://www.web-scraping.dev/assets/products/cherry-chocolate-box-medium-4.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/cat-ear-beanie-grey.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp",
+  "category": ""
+},
+{
+  "name": "Box of Chocolate Candy | Variants | Features | Packs | Reviews | Similar Products | Box of Chocolate Candy | Running Shoes for Men | Red Energy Potion | Hiking Boots for Outdoor Adventures",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/cherry-chocolate-box-small-1.webp | https://www.web-scraping.dev/assets/products/cherry-chocolate-box-small-2.webp | https://www.web-scraping.dev/assets/products/cherry-chocolate-box-small-3.webp | https://www.web-scraping.dev/assets/products/cherry-chocolate-box-small-4.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/men-running-shoes.webp | https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/hiking-boots-1.webp",
+  "category": ""
+},
+{
+  "name": "Box of Chocolate Candy | Variants | Features | Packs | Reviews | Similar Products | Women's High Heel Sandals | Kids' Light-Up Sneakers | Blue Energy Potion | Running Shoes for Men",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/orange-chocolate-box-large-1.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-large-2.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-large-3.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-large-4.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp | https://www.web-scraping.dev/assets/products/men-running-shoes.webp",
+  "category": ""
+},
+{
+  "name": "Box of Chocolate Candy | Variants | Features | Packs | Reviews | Similar Products | Box of Chocolate Candy | Dragon Energy Potion | Women's High Heel Sandals | Running Shoes for Men",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-2.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-3.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-4.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/dragon-potion.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/men-running-shoes.webp",
+  "category": ""
+},
+{
+  "name": "Box of Chocolate Candy | Variants | Features | Packs | Reviews | Similar Products | Kids' Light-Up Sneakers | Red Energy Potion | Teal Energy Potion | Kids' Light-Up Sneakers",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/orange-chocolate-box-small-1.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-small-2.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-small-3.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-small-4.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp | https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp",
+  "category": ""
+},
+{
+  "name": "Teal Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Dragon Energy Potion | Kids' Light-Up Sneakers | Box of Chocolate Candy | Hiking Boots for Outdoor Adventures",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/dragon-potion.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/hiking-boots-1.webp",
+  "category": ""
+},
+{
+  "name": "Red Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Classic Leather Sneakers | Red Energy Potion | Blue Energy Potion | Teal Energy Potion",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/classic-leather-sneakers-white.webp | https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp",
+  "category": ""
+},
+{
+  "name": "Red Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Red Energy Potion | Cat-Ear Beanie | Dark Red Energy Potion | Teal Energy Potion",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/cat-ear-beanie-grey.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp",
+  "category": ""
+},
+{
+  "name": "Blue Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Cat-Ear Beanie | Box of Chocolate Candy | Teal Energy Potion | Kids' Light-Up Sneakers",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/blue-potion.webp | https://www.web-scraping.dev/assets/products/cat-ear-beanie-grey.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp",
+  "category": ""
+},
+{
+  "name": "Blue Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Dark Red Energy Potion | Women's High Heel Sandals | Teal Energy Potion | Blue Energy Potion",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/blue-potion.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp",
+  "category": ""
+},
+{
+  "name": "Women's High Heel Sandals | Variants | Features | Packs | Reviews | Similar Products | Classic Leather Sneakers | Red Energy Potion | Dark Red Energy Potion | Box of Chocolate Candy",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-2.webp | https://www.web-scraping.dev/assets/products/classic-leather-sneakers-white.webp | https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp",
+  "category": ""
+},
+{
+  "name": "Hiking Boots for Outdoor Adventures | Variants | Features | Packs | Reviews | Similar Products | Running Shoes for Men | Blue Energy Potion | Women's High Heel Sandals | Women's High Heel Sandals",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/hiking-boots-1.webp | https://www.web-scraping.dev/assets/products/hiking-boots-2.webp | https://www.web-scraping.dev/assets/products/men-running-shoes.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp",
+  "category": ""
+},
+{
+  "name": "Dragon Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Teal Energy Potion | Cat-Ear Beanie | Teal Energy Potion | Women's High Heel Sandals",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/dragon-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/cat-ear-beanie-grey.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp",
+  "category": ""
+},
+{
+  "name": "Dark Red Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Hiking Boots for Outdoor Adventures | Red Energy Potion | Blue Energy Potion | Red Energy Potion",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/hiking-boots-1.webp | https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp | https://www.web-scraping.dev/assets/products/red-potion.webp",
+  "category": ""
+},
+{
+  "name": "Box of Chocolate Candy | Variants | Features | Packs | Reviews | Similar Products | Red Energy Potion | Dragon Energy Potion | Women's High Heel Sandals | Box of Chocolate Candy",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/orange-chocolate-box-small-1.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-small-2.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-small-3.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-small-4.webp | https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/dragon-potion.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp",
+  "category": ""
+},
+{
+  "name": "Cat-Ear Beanie | Variants | Features | Packs | Reviews | Similar Products | Teal Energy Potion | Box of Chocolate Candy | Women's High Heel Sandals | Blue Energy Potion",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/cat-ear-beanie-pink.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp",
+  "category": ""
+},
+{
+  "name": "Classic Leather Sneakers | Variants | Features | Packs | Reviews | Similar Products | Kids' Light-Up Sneakers | Running Shoes for Men | Teal Energy Potion | Hiking Boots for Outdoor Adventures",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/classic-leather-sneakers-black.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp | https://www.web-scraping.dev/assets/products/men-running-shoes.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/hiking-boots-1.webp",
+  "category": ""
+},
+{
+  "name": "Hiking Boots for Outdoor Adventures | Variants | Features | Packs | Reviews | Similar Products | Box of Chocolate Candy | Red Energy Potion | Hiking Boots for Outdoor Adventures | Kids' Light-Up Sneakers",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/hiking-boots-1.webp | https://www.web-scraping.dev/assets/products/hiking-boots-2.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/hiking-boots-1.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp",
+  "category": ""
+},
+{
+  "name": "Dragon Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Box of Chocolate Candy | Dragon Energy Potion | Red Energy Potion | Cat-Ear Beanie",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/dragon-potion.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/dragon-potion.webp | https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/cat-ear-beanie-grey.webp",
+  "category": ""
+},
+{
+  "name": "Blue Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Red Energy Potion | Dark Red Energy Potion | Teal Energy Potion | Kids' Light-Up Sneakers",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/blue-potion.webp | https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp",
+  "category": ""
+},
+{
+  "name": "Red Energy Potion | Variants | Features | Packs | Reviews | Similar Products | Dark Red Energy Potion | Teal Energy Potion | Cat-Ear Beanie | Kids' Light-Up Sneakers",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/red-potion.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/cat-ear-beanie-grey.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp",
+  "category": ""
+},
+{
+  "name": "Cat-Ear Beanie | Variants | Features | Packs | Reviews | Similar Products | Women's High Heel Sandals | Box of Chocolate Candy | Dragon Energy Potion | Running Shoes for Men",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/cat-ear-beanie-pink.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/dragon-potion.webp | https://www.web-scraping.dev/assets/products/men-running-shoes.webp",
+  "category": ""
+},
+{
+  "name": "Classic Leather Sneakers | Variants | Features | Packs | Reviews | Similar Products | Hiking Boots for Outdoor Adventures | Teal Energy Potion | Teal Energy Potion | Kids' Light-Up Sneakers",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/classic-leather-sneakers-black.webp | https://www.web-scraping.dev/assets/products/hiking-boots-1.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp",
+  "category": ""
+},
+{
+  "name": "Kids' Light-Up Sneakers | Variants | Features | Packs | Reviews | Similar Products | Box of Chocolate Candy | Teal Energy Potion | Women's High Heel Sandals | Box of Chocolate Candy",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-2.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-3.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-4.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/teal-potion.webp | https://www.web-scraping.dev/assets/products/women-sandals-beige-1.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp",
+  "category": ""
+},
+{
+  "name": "Running Shoes for Men | Variants | Features | Packs | Reviews | Similar Products | Kids' Light-Up Sneakers | Box of Chocolate Candy | Blue Energy Potion | Dark Red Energy Potion",
+  "price": "",
+  "thumbnail": "https://www.web-scraping.dev/assets/products/men-running-shoes.webp | https://www.web-scraping.dev/assets/products/kids-light-up-sneakers-red-1.webp | https://www.web-scraping.dev/assets/products/orange-chocolate-box-medium-1.webp | https://www.web-scraping.dev/assets/products/blue-potion.webp | https://www.web-scraping.dev/assets/products/darkred-potion.webp",
+  "category": ""
+}
+]

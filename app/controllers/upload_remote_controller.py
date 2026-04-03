@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import threading
-from tkinter import filedialog, messagebox
+from dataclasses import dataclass
 from typing import Any
 
-from dataclasses import dataclass
-
 from utils.upload_remote_service import upload_file as upload_remote_file
+
+
+def _showwarning(app: Any, title: str, message: str) -> None:
+    h = getattr(app, "showwarning", None)
+    if callable(h):
+        h(title, message)
 
 
 @dataclass(slots=True)
@@ -23,10 +27,10 @@ def send_remote_file(url: str, local_path: str, token: str | None = None) -> Upl
 def run_upload_tab_send(app: Any) -> None:
     url = app.upload_tab_url_entry.get().strip()
     if not url:
-        messagebox.showwarning("Upload", "Enter a remote URL.")
+        _showwarning(app, "Upload", "Enter a remote URL.")
         return
     if not getattr(app, "_upload_local_path", ""):
-        messagebox.showwarning("Upload", "Choose a file first (Browse).")
+        _showwarning(app, "Upload", "Choose a file first (Browse).")
         return
     token = app.upload_tab_token_entry.get().strip()
 
@@ -63,19 +67,9 @@ def run_upload_tab_send(app: Any) -> None:
                     "1.0",
                     f"HTTP {code}\n\n{(body or '')[:4000]}",
                 )
+            if hasattr(app, "_safe_page_update"):
+                app._safe_page_update()
 
         app.after(0, done)
 
     threading.Thread(target=work, daemon=True).start()
-
-
-def upload_tab_browse(app: Any) -> None:
-    path = filedialog.askopenfilename(
-        parent=app,
-        title="Choose file to upload",
-        filetypes=[("All files", "*.*")],
-    )
-    if path:
-        app._upload_local_path = path
-        app.upload_tab_path_entry.delete(0, "end")
-        app.upload_tab_path_entry.insert(0, path)

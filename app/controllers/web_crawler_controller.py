@@ -7,14 +7,28 @@ import sys
 import tempfile
 import threading
 from pathlib import Path
-from tkinter import filedialog, messagebox
 from typing import Any
 from urllib.parse import urlparse
 
-import customtkinter as ctk
-
-
 _META_PREFIX = "[WEBCRAWLER_META]"
+
+
+def _showinfo(app: Any, title: str, message: str) -> None:
+    h = getattr(app, "showinfo", None)
+    if callable(h):
+        h(title, message)
+
+
+def _showwarning(app: Any, title: str, message: str) -> None:
+    h = getattr(app, "showwarning", None)
+    if callable(h):
+        h(title, message)
+
+
+def _showerror(app: Any, title: str, message: str) -> None:
+    h = getattr(app, "showerror", None)
+    if callable(h):
+        h(title, message)
 
 
 def _append_log(app: Any, line: str) -> None:
@@ -53,7 +67,10 @@ def _allowed_domain(url: str) -> str:
 
 
 def web_crawler_browse_location(app: Any) -> None:
-    path = filedialog.askdirectory(parent=app, title="Choose crawler output folder")
+    pick_dir = getattr(app, "pick_directory", None)
+    if not callable(pick_dir):
+        raise RuntimeError("pick_directory is required")
+    path = pick_dir("Choose crawler output folder")
     if not path:
         return
     app.web_crawler_project_location_entry.delete(0, "end")
@@ -61,84 +78,39 @@ def web_crawler_browse_location(app: Any) -> None:
 
 
 def web_crawler_add_field(app: Any, field_name: str = "", selector: str = "") -> None:
-    row = app.web_crawler_fields_wrap
-    row_frame = ctk.CTkFrame(row, fg_color="transparent")
-    pady_row = 4 if getattr(app, "_web_crawler_ultra", False) else 6
-    row_frame.pack(fill="x", pady=(0, pady_row))
-    row_frame.grid_columnconfigure(1, weight=1)
-    fh = int(getattr(app, "_web_crawler_field_entry_height", 32))
-    ff = getattr(app, "_web_crawler_field_entry_font", ("Segoe UI", 12))
-    _entry_kw = dict(
-        font=ff,
-        height=fh,
-        corner_radius=8,
-    )
-    nw = 120 if getattr(app, "_web_crawler_ultra", False) else 148
-    name_entry = ctk.CTkEntry(row_frame, width=nw, **_entry_kw)
-    name_entry.grid(row=0, column=0, sticky="w", padx=(0, 10))
-    sel_entry = ctk.CTkEntry(row_frame, **_entry_kw)
-    sel_entry.grid(row=0, column=1, sticky="ew", padx=(0, 8))
-    del_btn = ctk.CTkButton(
-        row_frame,
-        text="🗑",
-        width=34 if getattr(app, "_web_crawler_ultra", False) else 36,
-        height=fh,
-        corner_radius=8,
-        fg_color=("gray80", "gray35"),
-        hover_color=("gray70", "gray45"),
-        text_color=("gray20", "gray90"),
-        command=lambda: web_crawler_remove_field(app, row_frame),
-    )
-    del_btn.grid(row=0, column=2)
-    if field_name:
-        name_entry.insert(0, field_name)
-    if selector:
-        sel_entry.insert(0, selector)
-    app._web_crawler_fields.append(
-        {
-            "frame": row_frame,
-            "name_entry": name_entry,
-            "selector_entry": sel_entry,
-            "delete_button": del_btn,
-        }
-    )
-    if hasattr(app, "_web_crawler_apply_responsive"):
-        app._web_crawler_apply_responsive()
+    mk_entry = getattr(app, "_flet_make_entry_proxy", None)
+    if not callable(mk_entry):
+        raise RuntimeError("_flet_make_entry_proxy is required")
+    row = {
+        "name_entry": mk_entry(field_name),
+        "selector_entry": mk_entry(selector),
+    }
+    app._web_crawler_fields.append(row)
+    render = getattr(app, "_flet_render_web_fields", None)
+    if callable(render):
+        render()
 
 
 def web_crawler_sync_field_row_sizes(app: Any) -> None:
-    """Apply current ultra/compact density to existing dynamic field rows."""
-    fh = int(getattr(app, "_web_crawler_field_entry_height", 32))
-    ff = getattr(app, "_web_crawler_field_entry_font", ("Segoe UI", 12))
-    ultra = bool(getattr(app, "_web_crawler_ultra", False))
-    nw = 120 if ultra else 148
-    db_w = 34 if ultra else 36
-    for row in getattr(app, "_web_crawler_fields", []):
-        try:
-            row["name_entry"].configure(width=nw, height=fh, font=ff)
-            row["selector_entry"].configure(height=fh, font=ff)
-            row["delete_button"].configure(width=db_w, height=fh)
-        except Exception:
-            pass
+    """No-op for Flet (density handled in view)."""
+    return
 
 
 def web_crawler_remove_field(app: Any, row_frame: Any) -> None:
-    app._web_crawler_fields = [
-        r for r in app._web_crawler_fields if r.get("frame") is not row_frame
-    ]
-    row_frame.destroy()
-    if hasattr(app, "_web_crawler_apply_responsive"):
-        app._web_crawler_apply_responsive()
+    app._web_crawler_fields = [r for r in app._web_crawler_fields if r is not row_frame]
+    render = getattr(app, "_flet_render_web_fields", None)
+    if callable(render):
+        render()
 
 
 def _build_config(app: Any) -> dict[str, Any] | None:
     target = _normalize_target_url(app.web_crawler_target_entry.get())
     if not target:
-        messagebox.showwarning("Web Crawler", "Please enter a target URL.")
+        _showwarning(app, "Web Crawler", "Please enter a target URL.")
         return None
     domain = _allowed_domain(target)
     if not domain:
-        messagebox.showwarning("Web Crawler", "Invalid URL. Please check target URL.")
+        _showwarning(app, "Web Crawler", "Invalid URL. Please check target URL.")
         return None
 
     fields: list[dict[str, str]] = []
@@ -148,16 +120,13 @@ def _build_config(app: Any) -> dict[str, Any] | None:
         if name and selector:
             fields.append({"name": name, "selector": selector})
     if not fields:
-        messagebox.showwarning("Web Crawler", "Add at least one field and selector.")
+        _showwarning(app, "Web Crawler", "Add at least one field and selector.")
         return None
 
     wait_mode = app.web_crawler_readiness_var.get().strip()
     wait_selector = app.web_crawler_wait_selector_entry.get().strip()
     if wait_mode == "Wait for Element..." and not wait_selector:
-        messagebox.showwarning(
-            "Web Crawler",
-            "Enter a selector for 'Wait for Element...' mode.",
-        )
+        _showwarning(app, "Web Crawler", "Enter a selector for 'Wait for Element...' mode.")
         return None
 
     output_dir = (app.web_crawler_project_location_entry.get() or "").strip() or "./crawls/"
@@ -192,7 +161,7 @@ def _build_config(app: Any) -> dict[str, Any] | None:
 def web_crawler_start(app: Any, logger: Any) -> None:
     proc = getattr(app, "_web_crawler_proc", None)
     if proc and proc.poll() is None:
-        messagebox.showinfo("Web Crawler", "Crawler is already running.")
+        _showinfo(app, "Web Crawler", "Crawler is already running.")
         return
 
     config = _build_config(app)
@@ -234,7 +203,7 @@ def web_crawler_start(app: Any, logger: Any) -> None:
         )
     except Exception as exc:
         _set_running(app, False)
-        messagebox.showerror("Web Crawler", f"Failed to start crawler:\n{exc}")
+        _showerror(app, "Web Crawler", f"Failed to start crawler:\n{exc}")
         return
 
     def watch() -> None:
@@ -277,27 +246,26 @@ def web_crawler_start(app: Any, logger: Any) -> None:
 def web_crawler_export_last(app: Any) -> None:
     output_path = getattr(app, "_web_crawler_last_output", "")
     if not output_path:
-        messagebox.showinfo("Web Crawler", "No export file found yet. Run the spider first.")
+        _showinfo(app, "Web Crawler", "No export file found yet. Run the spider first.")
         return
-    messagebox.showinfo("Web Crawler", f"Latest export:\n{output_path}")
+    _showinfo(app, "Web Crawler", f"Latest export:\n{output_path}")
 
 
 def web_crawler_view_items(app: Any) -> None:
     output_path = getattr(app, "_web_crawler_last_output", "")
     if not output_path or not os.path.exists(output_path):
-        messagebox.showinfo("Web Crawler", "No extracted items to preview.")
+        _showinfo(app, "Web Crawler", "No extracted items to preview.")
         return
 
     try:
         with open(output_path, "r", encoding="utf-8") as f:
             content = f.read(4000)
     except Exception as exc:
-        messagebox.showerror("Web Crawler", f"Failed to read output:\n{exc}")
+        _showerror(app, "Web Crawler", f"Failed to read output:\n{exc}")
         return
 
-    preview = ctk.CTkToplevel(app)
-    preview.title("Extracted Items Preview")
-    preview.geometry("680x420")
-    box = ctk.CTkTextbox(preview, font=("Consolas", 11))
-    box.pack(fill="both", expand=True, padx=10, pady=10)
-    box.insert("1.0", content if content else "(empty)")
+    preview = getattr(app, "show_scrollable_info", None)
+    if callable(preview):
+        preview("Extracted Items Preview", content if content else "(empty)")
+    else:
+        _showinfo(app, "Extracted Items Preview", content if content else "(empty)")

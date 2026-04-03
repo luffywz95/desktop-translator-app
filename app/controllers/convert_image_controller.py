@@ -4,15 +4,27 @@ from __future__ import annotations
 
 import os
 import threading
-from tkinter import filedialog, messagebox
 from typing import Any
 
-import customtkinter as ctk
-from PIL import Image
-
 from app.services import image_convert_service as ics
-from components.ctk_scrollable_helpers import sync_scrollbar_visibility
-from components.hover_marquee_label import HoverMarqueeClipLabel
+
+
+def _showinfo(app: Any, title: str, message: str) -> None:
+    h = getattr(app, "showinfo", None)
+    if callable(h):
+        h(title, message)
+
+
+def _showwarning(app: Any, title: str, message: str) -> None:
+    h = getattr(app, "showwarning", None)
+    if callable(h):
+        h(title, message)
+
+
+def _showerror(app: Any, title: str, message: str) -> None:
+    h = getattr(app, "showerror", None)
+    if callable(h):
+        h(title, message)
 
 
 def _unique_dest_path(folder: str, base: str, ext: str) -> str:
@@ -42,7 +54,9 @@ def _update_input_summary(app: Any) -> None:
 
 def update_convert_quality_percent_label(app: Any) -> None:
     lbl = getattr(app, "_convert_quality_pct_label", None)
-    if lbl is None or not lbl.winfo_exists():
+    if lbl is None:
+        return
+    if hasattr(lbl, "winfo_exists") and not lbl.winfo_exists():
         return
     try:
         v = int(round(float(app._convert_quality_var.get())))
@@ -52,86 +66,31 @@ def update_convert_quality_percent_label(app: Any) -> None:
 
 
 def _refresh_queue_list(app: Any) -> None:
-    ff = getattr(app, "_convert_list_frame", None)
-    if ff is None or not ff.winfo_exists():
-        return
-    host = getattr(app, "_convert_queue_list_host", None)
-    if host is None or not host.winfo_exists():
-        return
-    for w in host.winfo_children():
-        w.destroy()
-    app._convert_thumb_refs = []
-    if not app._convert_queue:
-        ctk.CTkLabel(
-            host,
-            text="No file(s) selected\n(Browse or drop to choose file(s))",
-            text_color="gray",
-        ).pack(expand=True, fill="both", pady=12)
-        _update_input_summary(app)
-        _sync_run_button(app)
-        try:
-            ff._parent_canvas.yview_moveto(0.0)
-        except Exception:
-            pass
-        sync_scrollbar_visibility(ff)
-        return
-
-    for i, path in enumerate(app._convert_queue):
-        r = ctk.CTkFrame(host, fg_color="transparent")
-        r.pack(fill="x", pady=2, padx=4)
-        r.grid_columnconfigure(1, weight=1)  # Marquee name takes remaining width.
-        r.grid_columnconfigure(2, weight=0)  # Close button keeps fixed width.
-
-        thumb_img = None
-        try:
-            im = Image.open(path)
-            if getattr(im, "n_frames", 1) > 1:
-                im.seek(0)
-            im = im.copy()
-            if im.mode not in ("RGB", "RGBA"):
-                im = im.convert("RGB")
-            im.thumbnail((44, 44), Image.Resampling.LANCZOS)
-            thumb_img = ctk.CTkImage(
-                light_image=im,
-                dark_image=im,
-                size=(44, 44),
-            )
-            app._convert_thumb_refs.append(thumb_img)
-            ctk.CTkLabel(r, text="", image=thumb_img, width=44, height=44).grid(
-                row=0, column=0, padx=(0, 8), sticky="nw"
-            )
-        except Exception:
-            ph = ctk.CTkFrame(r, width=44, height=44, fg_color=("gray75", "gray30"))
-            ph.pack_propagate(False)
-            ph.grid(row=0, column=0, padx=(0, 8), sticky="nw")
-
-        HoverMarqueeClipLabel(
-            r, text=os.path.basename(path), font=("Segoe UI", 11)
-        ).grid(row=0, column=1, sticky="ew")
-        ctk.CTkButton(
-            r,
-            text="✕",
-            width=24,
-            height=24,
-            fg_color="transparent",
-            hover_color=("#d3d3d3", "#4d4d4d"),
-            text_color=("gray10", "gray90"),
-            font=("Segoe UI", 12, "bold"),
-            command=lambda idx=i: convert_tab_remove_at(app, idx),
-        ).grid(row=0, column=2, padx=(6, 0), sticky="e")
-
+    flet_renderer = getattr(app, "_flet_render_convert_queue", None)
+    if not callable(flet_renderer):
+        raise RuntimeError("_flet_render_convert_queue is required")
+    flet_renderer()
     _update_input_summary(app)
     _sync_run_button(app)
-    try:
-        ff._parent_canvas.yview_moveto(0.0)
-    except Exception:
-        pass
-    sync_scrollbar_visibility(ff)
+
+
+def _convert_log_append(app: Any, line: str) -> None:
+    lg = getattr(app, "_convert_log", None)
+    if lg is None:
+        return
+    we = getattr(lg, "winfo_exists", None)
+    if callable(we) and not we():
+        return
+    lg.insert("end", line if line.endswith("\n") else line + "\n")
+    if hasattr(app, "_safe_page_update"):
+        app._safe_page_update()
 
 
 def _sync_run_button(app: Any) -> None:
     btn = getattr(app, "_convert_run_btn", None)
-    if btn is None or not btn.winfo_exists():
+    if btn is None:
+        return
+    if hasattr(btn, "winfo_exists") and not btn.winfo_exists():
         return
     folder = getattr(app, "_convert_output_folder_var", None)
     folder_ok = bool(
@@ -162,32 +121,27 @@ def _add_paths_to_queue(app: Any, paths: list[str]) -> None:
 
 
 def convert_tab_handle_drop(app: Any, event: Any) -> None:
-    try:
-        paths = list(app.tk.splitlist(event.data.strip()))
-    except Exception:
-        raw = (event.data or "").strip()
-        paths = [raw.strip("{}").strip()] if raw else []
+    splitter = getattr(app, "split_drop_paths", None)
+    if not callable(splitter):
+        return
+    paths = list(splitter(getattr(event, "data", "")))
     _add_paths_to_queue(app, paths)
 
 
 def convert_tab_browse(app: Any) -> None:
-    paths = filedialog.askopenfilenames(
-        parent=app,
-        title="Add images to convert",
-        filetypes=[
-            (
-                "Images",
-                "*.png *.jpg *.jpeg *.gif *.bmp *.webp *.tiff *.tif *.ico",
-            ),
-            ("All files", "*.*"),
-        ],
-    )
+    pick_many = getattr(app, "pick_multiple_files", None)
+    if not callable(pick_many):
+        raise RuntimeError("pick_multiple_files is required")
+    paths = tuple(pick_many("Add images to convert"))
     if paths:
         _add_paths_to_queue(app, list(paths))
 
 
 def convert_tab_browse_output_folder(app: Any) -> None:
-    d = filedialog.askdirectory(parent=app, title="Output folder")
+    pick_dir = getattr(app, "pick_directory", None)
+    if not callable(pick_dir):
+        raise RuntimeError("pick_directory is required")
+    d = pick_dir("Output folder")
     if d:
         app._convert_output_folder_var.set(d)
         _sync_run_button(app)
@@ -202,15 +156,11 @@ def convert_tab_run(app: Any) -> None:
         return
     fmt = app._convert_format_var.get().strip().upper()
     if fmt not in ics.OUTPUT_FORMATS:
-        messagebox.showerror("Convert", "Pick a valid output format.", parent=app)
+        _showerror(app, "Convert", "Pick a valid output format.")
         return
     folder = app._convert_output_folder_var.get().strip()
     if not folder or not os.path.isdir(folder):
-        messagebox.showerror(
-            "Convert",
-            "Choose a valid output folder.",
-            parent=app,
-        )
+        _showerror(app, "Convert", "Choose a valid output folder.")
         return
 
     quality = int(round(float(app._convert_quality_var.get())))
@@ -225,16 +175,30 @@ def convert_tab_run(app: Any) -> None:
 
     bar = getattr(app, "_convert_progress_bar", None)
     btn = getattr(app, "_convert_run_btn", None)
+    log = getattr(app, "_convert_log", None)
+    if log is not None:
+        le = getattr(log, "winfo_exists", None)
+        if not callable(le) or le():
+            log.delete()
     if btn is not None:
         btn.configure(state="disabled")
 
     def set_progress(p: float) -> None:
-        if bar is not None and bar.winfo_exists():
+        if bar is not None:
+            we = getattr(bar, "winfo_exists", None)
+            if callable(we) and not we():
+                return
             bar.set(max(0.0, min(1.0, p)))
 
     set_progress(0.0)
 
     def work() -> None:
+        app.after(
+            0,
+            lambda: _convert_log_append(
+                app, f"[i] Converting {n} file(s) to {fmt} → {folder}"
+            ),
+        )
         errors: list[str] = []
         ok_count = 0
         for i, src in enumerate(queue_snapshot):
@@ -250,32 +214,40 @@ def convert_tab_run(app: Any) -> None:
                     cmyk_to_rgb=cmyk,
                 )
                 ok_count += 1
+                bn = os.path.basename(src)
+                app.after(0, lambda b=bn, d=dest: _convert_log_append(app, f"[ok] {b} → {d}"))
             except Exception as e:
                 errors.append(f"{os.path.basename(src)}: {e}")
+                bn = os.path.basename(src)
+                app.after(0, lambda b=bn, err=e: _convert_log_append(app, f"[err] {b}: {err}"))
             done = i + 1
             app.after(0, lambda d=done, total=n: set_progress(d / total))
 
         def finish() -> None:
-            if btn is not None and btn.winfo_exists():
-                btn.configure(state="normal")
+            if btn is not None:
+                be = getattr(btn, "winfo_exists", None)
+                if not callable(be) or be():
+                    btn.configure(state="normal")
+            _convert_log_append(
+                app,
+                f"[i] Finished: {ok_count}/{n} file(s) ok, {len(errors)} error(s).",
+            )
             if errors:
-                messagebox.showwarning(
+                _showwarning(
+                    app,
                     "Conversion finished with errors",
                     "\n".join(errors[:8]) + ("\n…" if len(errors) > 8 else ""),
-                    parent=app,
                 )
             elif ok_count:
-                messagebox.showinfo(
-                    "Convert",
-                    f"Saved {ok_count} file(s) to:\n{folder}",
-                    parent=app,
-                )
+                _showinfo(app, "Convert", f"Saved {ok_count} file(s) to:\n{folder}")
             if ok_count == n and not errors:
                 set_progress(1.0)
             elif ok_count > 0:
                 set_progress(ok_count / n)
             else:
                 set_progress(0.0)
+            if hasattr(app, "_safe_page_update"):
+                app._safe_page_update()
 
         app.after(0, finish)
 

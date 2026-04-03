@@ -9,7 +9,7 @@ import os
 import subprocess
 import sys
 import time
-from typing import Literal
+from typing import Any, Literal, TypedDict
 
 from utils.logger import Logger
 
@@ -23,6 +23,9 @@ _LEGACY_INBOUND_PATTERN = r"^The Owl Receive File TCP \d+$"
 _LEGACY_OUTBOUND_PATTERN = r"^The Owl Upload File TCP \d+$"
 
 FirewallPreviewAction = Literal["noop", "add", "replace"]
+
+# Inspect result for Transfer Hub rules (see inspect_*_transfer_rule).
+TransferRuleInspectState = Literal["noop", "add", "enable", "confirm_replace", "error"]
 
 
 def transfer_hub_inbound_rule_name(port: int = 0) -> str:
@@ -174,6 +177,255 @@ def wait_for_outbound_tcp_allowed(
             port,
         )
     return ok
+
+
+class TransferRuleInspectResult(TypedDict):
+    state: TransferRuleInspectState
+    remove_names: list[str]
+    enable_name: str | None
+
+
+def _inspect_transfer_rule_script(
+    direction: str,
+    port: int,
+    fixed: str,
+    legacy_re: str,
+    port_field: str,
+) -> str:
+    fixed_esc = fixed.replace("'", "''")
+    legacy_esc = legacy_re.replace("'", "''")
+    return rf"""
+$ErrorActionPreference = 'SilentlyContinue'
+$fixed = '{fixed_esc}'
+$legacyRe = '{legacy_esc}'
+$p = [int]{int(port)}
+$direction = '{direction}'
+$portField = '{port_field}'
+$all = @(Get-NetFirewallRule -Direction $direction -ErrorAction SilentlyContinue | Where-Object {{
+  $_.DisplayName -eq $fixed -or $_.DisplayName -match $legacyRe
+}})
+if ($all.Count -eq 0) {{
+  (@{{ state = 'add'; remove_names = @(); enable_name = $null }} | ConvertTo-Json -Compress -Depth 6)
+  exit 0
+}}
+$legacy = @($all | Where-Object {{ $_.DisplayName -match $legacyRe }})
+if ($legacy.Count -gt 0) {{
+  (@{{ state = 'confirm_replace'; remove_names = @($all | ForEach-Object {{ $_.DisplayName }}); enable_name = $null }} | ConvertTo-Json -Compress -Depth 6)
+  exit 0
+}}
+$fixedRules = @($all | Where-Object {{ $_.DisplayName -eq $fixed }})
+if ($fixedRules.Count -ne 1) {{
+  (@{{ state = 'confirm_replace'; remove_names = @($all | ForEach-Object {{ $_.DisplayName }}); enable_name = $null }} | ConvertTo-Json -Compress -Depth 6)
+  exit 0
+}}
+$r = $fixedRules[0]
+$tf = @($r | Get-NetFirewallPortFilter -ErrorAction SilentlyContinue) | Where-Object {{ $_.Protocol -eq 'TCP' }} | Select-Object -First 1
+if ($null -eq $tf) {{
+  (@{{ state = 'confirm_replace'; remove_names = @($r.DisplayName); enable_name = $null }} | ConvertTo-Json -Compress -Depth 6)
+  exit 0
+}}
+$ports = @($tf.$portField)
+$hasPort = $false
+foreach ($x in $ports) {{
+  try {{ if ([int]$x -eq $p) {{ $hasPort = $true; break }} }} catch {{ }}
+}}
+if (-not $hasPort) {{
+  (@{{ state = 'confirm_replace'; remove_names = @($r.DisplayName); enable_name = $null }} | ConvertTo-Json -Compress -Depth 6)
+  exit 0
+}}
+if ($r.Action -ne 'Allow') {{
+  (@{{ state = 'confirm_replace'; remove_names = @($r.DisplayName); enable_name = $null }} | ConvertTo-Json -Compress -Depth 6)
+  exit 0
+}}
+if (-not $r.Enabled) {{
+  (@{{ state = 'enable'; remove_names = @(); enable_name = $fixed }} | ConvertTo-Json -Compress -Depth 6)
+  exit 0
+}}
+(@{{ state = 'noop'; remove_names = @(); enable_name = $null }} | ConvertTo-Json -Compress -Depth 6)
+exit 0
+"""
+
+
+def _parse_inspect_json(data: dict[str, Any] | None) -> TransferRuleInspectResult:
+    if not data:
+        return {"state": "error", "remove_names": [], "enable_name": None}
+    st = str(data.get("state", "add"))
+    if st not in ("noop", "add", "enable", "confirm_replace", "error"):
+        st = "error"
+    names = data.get("remove_names") or []
+    if isinstance(names, str):
+        names = [names]
+    elif not isinstance(names, list):
+        names = []
+    names = [str(x) for x in names]
+    en = data.get("enable_name")
+    enable_name = None if en in (None, "") else str(en)
+    return {"state": st, "remove_names": names, "enable_name": enable_name}  # type: ignore[typeddict-item]
+
+
+def inspect_inbound_transfer_rule(port: int) -> TransferRuleInspectResult:
+    if sys.platform != "win32":
+        return {"state": "noop", "remove_names": [], "enable_name": None}
+    data = _powershell_json(
+        _inspect_transfer_rule_script(
+            "Inbound",
+            port,
+            TRANSFER_HUB_INBOUND_RULE_DISPLAY_NAME,
+            _LEGACY_INBOUND_PATTERN,
+            "LocalPort",
+        )
+    )
+    return _parse_inspect_json(data)
+
+
+def inspect_outbound_transfer_rule(port: int) -> TransferRuleInspectResult:
+    if sys.platform != "win32":
+        return {"state": "noop", "remove_names": [], "enable_name": None}
+    data = _powershell_json(
+        _inspect_transfer_rule_script(
+            "Outbound",
+            port,
+            TRANSFER_HUB_OUTBOUND_RULE_DISPLAY_NAME,
+            _LEGACY_OUTBOUND_PATTERN,
+            "RemotePort",
+        )
+    )
+    return _parse_inspect_json(data)
+
+
+def transfer_hub_inbound_rule_ready(port: int) -> bool:
+    """True if the Transfer Hub inbound rule exists, allows TCP on local port, and is enabled."""
+    if sys.platform != "win32":
+        return True
+    return inspect_inbound_transfer_rule(int(port))["state"] == "noop"
+
+
+def transfer_hub_outbound_rule_ready(port: int) -> bool:
+    """True if the Transfer Hub outbound rule exists, allows TCP on remote port, and is enabled."""
+    if sys.platform != "win32":
+        return True
+    return inspect_outbound_transfer_rule(int(port))["state"] == "noop"
+
+
+def wait_for_transfer_hub_inbound_ready(
+    port: int = 5000,
+    timeout_s: float = 15.0,
+    interval_s: float = 0.25,
+) -> bool:
+    """Poll until the Transfer Hub inbound rule inspect reports noop (after elevated changes)."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if transfer_hub_inbound_rule_ready(port):
+            return True
+        time.sleep(interval_s)
+    ok = transfer_hub_inbound_rule_ready(port)
+    if not ok:
+        logger.warning(
+            "Transfer Hub inbound rule not ready after %.1fs (port %s).",
+            timeout_s,
+            port,
+        )
+    return ok
+
+
+def wait_for_transfer_hub_outbound_ready(
+    port: int = 5000,
+    timeout_s: float = 15.0,
+    interval_s: float = 0.25,
+) -> bool:
+    """Poll until the Transfer Hub outbound rule inspect reports noop (after elevated changes)."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if transfer_hub_outbound_rule_ready(port):
+            return True
+        time.sleep(interval_s)
+    ok = transfer_hub_outbound_rule_ready(port)
+    if not ok:
+        logger.warning(
+            "Transfer Hub outbound rule not ready after %.1fs (port %s).",
+            timeout_s,
+            port,
+        )
+    return ok
+
+
+def _enable_rule_script(display_name: str) -> str:
+    dn = display_name.replace("'", "''")
+    return rf"""
+$ErrorActionPreference = 'Stop'
+Enable-NetFirewallRule -DisplayName '{dn}' -ErrorAction Stop
+exit 0
+"""
+
+
+def _inbound_add_only_script(new_port: int) -> str:
+    fixed = TRANSFER_HUB_INBOUND_RULE_DISPLAY_NAME.replace("'", "''")
+    legacy = _LEGACY_INBOUND_PATTERN.replace("'", "''")
+    p = int(new_port)
+    return rf"""
+$ErrorActionPreference = 'Stop'
+$fixed = '{fixed}'
+$legacyRe = '{legacy}'
+$all = @(Get-NetFirewallRule -Direction Inbound -ErrorAction SilentlyContinue | Where-Object {{
+  $_.DisplayName -eq $fixed -or $_.DisplayName -match $legacyRe
+}})
+if ($all.Count -gt 0) {{ exit 0 }}
+New-NetFirewallRule -DisplayName $fixed -Direction Inbound -Action Allow -Protocol TCP -LocalPort {p}
+exit 0
+"""
+
+
+def _outbound_add_only_script(new_port: int) -> str:
+    fixed = TRANSFER_HUB_OUTBOUND_RULE_DISPLAY_NAME.replace("'", "''")
+    legacy = _LEGACY_OUTBOUND_PATTERN.replace("'", "''")
+    p = int(new_port)
+    return rf"""
+$ErrorActionPreference = 'Stop'
+$fixed = '{fixed}'
+$legacyRe = '{legacy}'
+$all = @(Get-NetFirewallRule -Direction Outbound -ErrorAction SilentlyContinue | Where-Object {{
+  $_.DisplayName -eq $fixed -or $_.DisplayName -match $legacyRe
+}})
+if ($all.Count -gt 0) {{ exit 0 }}
+New-NetFirewallRule -DisplayName $fixed -Direction Outbound -Action Allow -Protocol TCP -RemotePort {p}
+exit 0
+"""
+
+
+def apply_inbound_rule_enable_elevated(display_name: str) -> bool:
+    if sys.platform != "win32":
+        return True
+    return _launch_powershell_elevated(_enable_rule_script(display_name))
+
+
+def apply_outbound_rule_enable_elevated(display_name: str) -> bool:
+    if sys.platform != "win32":
+        return True
+    return _launch_powershell_elevated(_enable_rule_script(display_name))
+
+
+def try_enable_net_firewall_rule_non_elevated(display_name: str) -> bool:
+    """Try Enable-NetFirewallRule without UAC (succeeds if policy allows)."""
+    if sys.platform != "win32":
+        return True
+    dn = display_name.replace("'", "''")
+    script = (
+        f"$ErrorActionPreference = 'Stop'; "
+        f"Enable-NetFirewallRule -DisplayName '{dn}' -ErrorAction Stop; exit 0"
+    )
+    return _powershell_ok(script)
+
+
+def apply_inbound_transfer_rule_add_elevated(new_port: int) -> bool:
+    if sys.platform != "win32":
+        return True
+    return _launch_powershell_elevated(_inbound_add_only_script(new_port))
+
+
+def apply_outbound_transfer_rule_add_elevated(new_port: int) -> bool:
+    if sys.platform != "win32":
+        return True
+    return _launch_powershell_elevated(_outbound_add_only_script(new_port))
 
 
 def _preview_script(

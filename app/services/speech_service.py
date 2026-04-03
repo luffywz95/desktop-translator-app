@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from logging import Logger
-from tkinter import messagebox
 from typing import Any
 
 import pyttsx3
@@ -53,10 +52,17 @@ def speech_worker(
         if selected_voice_id:
             engine.setProperty("voice", selected_voice_id)
         else:
-            messagebox.showerror(
-                "No voice found",
-                f'No voice found for "{settings["target_lang"]}". Please install a new voice from the settings.',
+            logger.error(
+                'No TTS voice found for "%s"; install a voice or change language.',
+                settings["target_lang"],
             )
+            h = getattr(app, "showerror", None)
+            if callable(h):
+                h(
+                    "No voice found",
+                    f'No voice found for "{settings["target_lang"]}". '
+                    "Install a voice in Windows speech settings or pick another language.",
+                )
             return
 
         engine.say(text)

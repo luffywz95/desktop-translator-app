@@ -10,23 +10,16 @@ default_lang_map = {
     "Korean": {"trans_lang": "ko", "tts_lang": ["ko-KR"]},
 }
 
+# Default UI language for translation + TTS voice filtering (must be a key in default_lang_map).
+DEFAULT_TARGET_LANG = "Chinese (Traditional)"
+
 default_settings = {
     "settings_open": False,
+    # Flet appearance: "light" | "dark" | "system" (follow OS).
+    "theme_mode": "system",
     "is_pinned": False,
     "enable_translation": False,
-    "target_lang": "English",
-    "hotkey_settings": {
-        "background_process_hotkey": {
-            "enable": True,
-            "hotkey": "ctrl+shift+x",
-        },
-        "application_invoke_hotkey": {
-            "enable": True,
-            "hotkey": "ctrl+shift+q",
-        },
-    },
-    "enable_focus_dim": True,
-    "idle_opacity": 1,
+    "target_lang": DEFAULT_TARGET_LANG,
     "current_img": None,
     "ocr_langs": "chi_sim+chi_sim_vert+chi_tra+chi_tra_vert+eng+kor+jpn+vie",
     # Receive files via Transfer Hub (inbound, LAN listener + inbound firewall rule).
@@ -47,6 +40,13 @@ default_settings = {
         "name": "",
     },
 }
+
+THEME_MODE_VALUES = frozenset({"light", "dark", "system"})
+
+
+def normalize_theme_mode_setting(value: object) -> str:
+    s = str(value or "system").lower().strip()
+    return s if s in THEME_MODE_VALUES else "system"
 
 
 def _settings_for_storage(d: dict) -> dict:
@@ -118,7 +118,11 @@ class StorageEngine:
                         m.update(cur)
                     merged[nested_key] = m
             raw_state = merged
-        # In-memory only; never restore a PIL image from LMDB.
-        raw_state["current_img"] = None
+        # In-memory only; never restore a PIL image from LMDB (settings only).
+        if key == "settings":
+            raw_state["current_img"] = None
+        elif key == "lang_map":
+            # `bind()` used to set current_img on every document; that polluted lang_map keys.
+            raw_state.pop("current_img", None)
         state = LiveState(self, key, raw_state)
         return state

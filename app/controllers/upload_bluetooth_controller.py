@@ -3,14 +3,8 @@ from __future__ import annotations
 import os
 import threading
 from logging import Logger
-from tkinter import TclError, filedialog, messagebox
 from typing import Any
 
-import customtkinter as ctk
-from PIL import Image
-
-from components.loading_overlay import BusyOverlay
-from components.ctk_scrollable_helpers import sync_scrollbar_visibility
 from app.services.bluetooth_doctor_service import (
     BluetoothDoctorSnapshot,
     collect_bluetooth_doctor_snapshot,
@@ -30,6 +24,24 @@ from utils.upload_bluetooth_service import (
 _STALE_BT_DEVICE_MSG = "Could not open Bluetooth device."
 
 
+def _showinfo(app: Any, title: str, message: str) -> None:
+    h = getattr(app, "showinfo", None)
+    if callable(h):
+        h(title, message)
+
+
+def _showwarning(app: Any, title: str, message: str) -> None:
+    h = getattr(app, "showwarning", None)
+    if callable(h):
+        h(title, message)
+
+
+def _showerror(app: Any, title: str, message: str) -> None:
+    h = getattr(app, "showerror", None)
+    if callable(h):
+        h(title, message)
+
+
 def _norm_bt_path(p: str) -> str:
     try:
         return os.path.normcase(os.path.normpath(os.path.abspath(p)))
@@ -38,7 +50,6 @@ def _norm_bt_path(p: str) -> str:
 
 
 def _merge_bluetooth_paths(existing: list[str], new_paths: list[str]) -> list[str]:
-    """Append new paths; skip duplicates (same normalized path). Preserve order."""
     seen = {_norm_bt_path(x) for x in existing}
     out = list(existing)
     for p in new_paths:
@@ -49,33 +60,12 @@ def _merge_bluetooth_paths(existing: list[str], new_paths: list[str]) -> list[st
     return out
 
 
-def _bt_scoped_busy_overlay(app: Any) -> BusyOverlay:
-    host = getattr(app, "_upload_bluetooth_status_host", None)
-    if host is None:
-        raise RuntimeError("Bluetooth status host frame is missing.")
-    o = getattr(app, "_bt_status_busy_overlay", None)
-    if o is None:
-        o = BusyOverlay(host)
-        app._bt_status_busy_overlay = o
-    return o
-
-
-def _bt_hide_bluetooth_status_busy(app: Any) -> None:
-    o = getattr(app, "_bt_status_busy_overlay", None)
-    if o is None:
-        return
-    try:
-        o.hide()
-    except TclError:
-        pass
-
-
 def _bt_cancel_send_watchdog(app: Any) -> None:
     wid = getattr(app, "_bt_send_watchdog_after_id", None)
     if wid is not None:
         try:
             app.after_cancel(wid)
-        except TclError:
+        except Exception:
             pass
     app._bt_send_watchdog_after_id = None
 
@@ -102,10 +92,10 @@ def _bt_show_bluetooth_send_dialog(
             dev = (getattr(app, "_bt_target_name", None) or "").strip()
             if dev:
                 body += f"\n\nDevice: {dev}"
-            messagebox.showinfo("Bluetooth", body, parent=app)
+            _showinfo(app, "Bluetooth", body)
         else:
-            messagebox.showerror("Bluetooth", failure_message, parent=app)
-    except TclError:
+            _showerror(app, "Bluetooth", failure_message)
+    except Exception:
         pass
 
 
@@ -126,7 +116,6 @@ def _bt_finalize_bluetooth_send(
     app._bt_send_finished = True
     if cancel_watchdog:
         _bt_cancel_send_watchdog(app)
-    _bt_hide_bluetooth_status_busy(app)
 
     msg_for_ui = user_message
     if (
@@ -143,15 +132,12 @@ def _bt_finalize_bluetooth_send(
     if not app.winfo_exists():
         return
     try:
-        if app.upload_bluetooth_send_btn.winfo_exists():
-            app.upload_bluetooth_send_btn.configure(state="normal")
-        if app.upload_bluetooth_doctor_btn.winfo_exists():
-            app.upload_bluetooth_doctor_btn.configure(state="normal")
-        if app.upload_bluetooth_status.winfo_exists():
-            app.upload_bluetooth_status.delete("1.0", "end")
-            line = msg_for_ui if success else f"Failed: {msg_for_ui}"
-            app.upload_bluetooth_status.insert("1.0", line)
-    except TclError:
+        app.upload_bluetooth_send_btn.configure(state="normal")
+        app.upload_bluetooth_doctor_btn.configure(state="normal")
+        app.upload_bluetooth_status.delete("1.0", "end")
+        line = msg_for_ui if success else f"Failed: {msg_for_ui}"
+        app.upload_bluetooth_status.insert("1.0", line)
+    except Exception:
         pass
 
     _bt_show_bluetooth_send_dialog(
@@ -160,6 +146,8 @@ def _bt_finalize_bluetooth_send(
         failure_message=msg_for_ui,
         local_path=local_path,
     )
+    if hasattr(app, "_safe_page_update"):
+        app._safe_page_update()
 
 
 def clear_saved_bluetooth_upload_target(app: Any, settings: Any) -> None:
@@ -168,18 +156,16 @@ def clear_saved_bluetooth_upload_target(app: Any, settings: Any) -> None:
     settings["bluetooth_upload"] = {"device_id": "", "name": ""}
     if getattr(app, "upload_bt_device_label", None) is not None:
         try:
-            if app.upload_bt_device_label.winfo_exists():
-                app.upload_bt_device_label.configure(text="No device selected.")
+            app.upload_bt_device_label.configure(text="No device selected.")
         except Exception:
             pass
 
 
 def upload_bluetooth_browse(app: Any) -> None:
-    paths = filedialog.askopenfilenames(
-        parent=app,
-        title="Choose file(s) to send",
-        filetypes=[("All files", "*.*")],
-    )
+    pick_many = getattr(app, "pick_multiple_files", None)
+    if not callable(pick_many):
+        raise RuntimeError("pick_multiple_files is required for Bluetooth file pick")
+    paths = tuple(pick_many("Choose file(s) to send"))
     if paths:
         prior = list(getattr(app, "_upload_bluetooth_paths", []) or [])
         app._upload_bluetooth_paths = _merge_bluetooth_paths(prior, list(paths))
@@ -193,8 +179,10 @@ def upload_bluetooth_browse(app: Any) -> None:
 
 
 def upload_bluetooth_handle_drop(app: Any, event: Any) -> None:
-    # event.data might be a space-separated list of paths wrapped in curly braces if they contain spaces.
-    raw_paths = app.tk.splitlist(event.data)
+    splitter = getattr(app, "split_drop_paths", None)
+    if not callable(splitter):
+        return
+    raw_paths = splitter(getattr(event, "data", ""))
     if not raw_paths:
         return
     prior = list(getattr(app, "_upload_bluetooth_paths", []) or [])
@@ -207,128 +195,34 @@ def upload_bluetooth_handle_drop(app: Any, event: Any) -> None:
         app.upload_bluetooth_path_entry.insert(0, f"{n} files selected")
     update_upload_bluetooth_preview(app)
 
+
 def _remove_bluetooth_file(app: Any, path_to_remove: str) -> None:
     if path_to_remove in app._upload_bluetooth_paths:
         app._upload_bluetooth_paths.remove(path_to_remove)
-    
+
     app.upload_bluetooth_path_entry.delete(0, "end")
     if len(app._upload_bluetooth_paths) == 1:
         app.upload_bluetooth_path_entry.insert(0, app._upload_bluetooth_paths[0])
     elif len(app._upload_bluetooth_paths) > 1:
         app.upload_bluetooth_path_entry.insert(0, f"{len(app._upload_bluetooth_paths)} files selected")
-    
+
     update_upload_bluetooth_preview(app)
-
-def _bt_queue_thumb_size() -> int:
-    return 36
-
-
-def _bt_queue_icon_cell(app: Any, row: ctk.CTkFrame, path: str) -> None:
-    """Left column: image thumbnail for raster images; plain text placeholder otherwise."""
-    sz = _bt_queue_thumb_size()
-    box = ctk.CTkFrame(row, width=sz, height=sz, fg_color="transparent")
-    box.grid_propagate(False)
-    box.grid(row=0, column=0, padx=(0, 6), sticky="nw")
-
-    thumb_img = None
-    try:
-        im = Image.open(path)
-        if getattr(im, "n_frames", 1) > 1:
-            im.seek(0)
-        im = im.copy()
-        if im.mode not in ("RGB", "RGBA"):
-            im = im.convert("RGB")
-        im.thumbnail((sz, sz), Image.Resampling.LANCZOS)
-        thumb_img = ctk.CTkImage(light_image=im, dark_image=im, size=(sz, sz))
-        refs = getattr(app, "_upload_bluetooth_thumb_refs", None)
-        if refs is not None:
-            refs.append(thumb_img)
-        ctk.CTkLabel(box, text="", image=thumb_img, width=sz, height=sz).place(
-            relx=0.5, rely=0.5, anchor="center"
-        )
-    except Exception:
-        ctk.CTkLabel(
-            box,
-            text="FILE",
-            width=sz,
-            height=sz,
-            font=("Segoe UI", 9, "bold"),
-            text_color=("gray40", "gray60"),
-            fg_color=("gray85", "gray35"),
-            corner_radius=4,
-        ).place(relx=0.5, rely=0.5, anchor="center")
 
 
 def update_upload_bluetooth_preview(app: Any) -> None:
-    from components.hover_marquee_label import HoverMarqueeClipLabel
-
-    host = getattr(app, "_upload_bluetooth_queue_inner", None)
-    if host is None or not host.winfo_exists():
-        return
-    for widget in host.winfo_children():
-        widget.destroy()
-    app._upload_bluetooth_thumb_refs = []
-
-    paths = getattr(app, "_upload_bluetooth_paths", [])
-    if not paths:
-        app.upload_bluetooth_empty_label = ctk.CTkLabel(
-            host,
-            text="No file(s) selected\n(Browse or drop to choose file(s))",
-            text_color="gray",
-        )
-        app.upload_bluetooth_empty_label.pack(expand=True, fill="both", pady=40)
-        list_frame = getattr(app, "upload_bluetooth_list_frame", None)
-        if list_frame is not None and list_frame.winfo_exists():
-            try:
-                # Reset stale scroll position before visibility sync.
-                list_frame._parent_canvas.yview_moveto(0.0)
-            except Exception:
-                pass
-            sync_scrollbar_visibility(list_frame)
-        return
-
-    for p in paths:
-        row = ctk.CTkFrame(host, fg_color="transparent")
-        row.pack(fill="x", pady=2, padx=4)
-        row.grid_columnconfigure(1, weight=1)  # Marquee gets remaining space
-        row.grid_columnconfigure(2, weight=0)  # Close button gets fixed space
-
-        _bt_queue_icon_cell(app, row, p)
-
-        name_lbl = HoverMarqueeClipLabel(
-            row, text=os.path.basename(p), font=("Segoe UI", 11)
-        )
-        name_lbl.grid(row=0, column=1, sticky="ew")
-
-        close_btn = ctk.CTkButton(
-            row,
-            text="✕",
-            width=24,
-            height=24,
-            fg_color="transparent",
-            hover_color=("#d3d3d3", "#4d4d4d"),
-            text_color=("gray10", "gray90"),
-            command=lambda path=p: _remove_bluetooth_file(app, path),
-        )
-        close_btn.grid(row=0, column=2, padx=(6, 0), sticky="e")
-
-    list_frame = getattr(app, "upload_bluetooth_list_frame", None)
-    if list_frame is not None and list_frame.winfo_exists():
-        try:
-            # Keep visibility logic deterministic after list mutations.
-            list_frame._parent_canvas.yview_moveto(0.0)
-        except Exception:
-            pass
-        sync_scrollbar_visibility(list_frame)
+    renderer = getattr(app, "_flet_render_bt_queue", None)
+    if not callable(renderer):
+        raise RuntimeError("_flet_render_bt_queue is required")
+    renderer()
 
 
 def upload_bluetooth_send_bt(app: Any, *, logger: Logger, settings: Any) -> None:
     ok, hint = bluetooth_runtime_available()
     if not ok:
-        messagebox.showwarning("Bluetooth", hint)
+        _showwarning(app, "Bluetooth", hint)
         return
     if not app._bt_target_device_id:
-        messagebox.showwarning("Bluetooth", "Choose a Bluetooth device first.")
+        _showwarning(app, "Bluetooth", "Choose a Bluetooth device first.")
         return
     if is_ios_like_name(app._bt_target_name):
         logger.warning(
@@ -336,7 +230,8 @@ def upload_bluetooth_send_bt(app: Any, *, logger: Logger, settings: Any) -> None
             app._bt_target_name,
             app._bt_target_device_id,
         )
-        messagebox.showwarning(
+        _showwarning(
+            app,
             "Bluetooth",
             "This target appears to be an iOS device. iOS generally blocks "
             "generic Bluetooth file transfer (OBEX) from Windows PCs.\n\n"
@@ -344,12 +239,12 @@ def upload_bluetooth_send_bt(app: Any, *, logger: Logger, settings: Any) -> None
         )
         return
     if not getattr(app, "_upload_bluetooth_paths", []):
-        messagebox.showwarning("Bluetooth", "Choose a file first (Browse).")
+        _showwarning(app, "Bluetooth", "Choose a file first (Browse).")
         return
 
     paths = app._upload_bluetooth_paths
     total_files = len(paths)
-    
+
     timeout_ms = 0
     for p in paths:
         try:
@@ -357,7 +252,7 @@ def upload_bluetooth_send_bt(app: Any, *, logger: Logger, settings: Any) -> None
         except OSError:
             fsize = 0
         timeout_ms += int(1000 * bluetooth_send_ui_watchdog_timeout_sec(fsize))
-        
+
     session = getattr(app, "_bt_send_session", 0) + 1
     app._bt_send_session = session
     app._bt_send_finished = False
@@ -365,10 +260,9 @@ def upload_bluetooth_send_bt(app: Any, *, logger: Logger, settings: Any) -> None
     app.upload_bluetooth_send_btn.configure(state="disabled")
     app.upload_bluetooth_doctor_btn.configure(state="disabled")
     app.upload_bluetooth_status.delete("1.0", "end")
-    try:
-        _bt_scoped_busy_overlay(app).show("Sending over Bluetooth…")
-    except (TclError, RuntimeError):
-        app.upload_bluetooth_status.insert("1.0", "Sending over Bluetooth…")
+    app.upload_bluetooth_status.insert("1.0", "Sending over Bluetooth…")
+    if hasattr(app, "_safe_page_update"):
+        app._safe_page_update()
 
     def watchdog() -> None:
         app._bt_send_watchdog_after_id = None
@@ -393,25 +287,29 @@ def upload_bluetooth_send_bt(app: Any, *, logger: Logger, settings: Any) -> None
         success, msg = False, "Bluetooth send did not complete."
         for i, path in enumerate(paths, 1):
             fname = os.path.basename(path)
-            
+
             def update_status(current_file=fname, idx=i):
                 if app.winfo_exists():
                     app.upload_bluetooth_status.delete("1.0", "end")
-                    app.upload_bluetooth_status.insert("1.0", f"Sending {idx}/{total_files}: {current_file}...")
-                    
+                    app.upload_bluetooth_status.insert(
+                        "1.0", f"Sending {idx}/{total_files}: {current_file}..."
+                    )
+                    if hasattr(app, "_safe_page_update"):
+                        app._safe_page_update()
+
             app.after(0, update_status)
-            
+
             try:
                 success, msg = send_file_to_device(app._bt_target_device_id, path)
                 if not success:
                     msg = f"Failed on file {i}/{total_files} ({fname}): {msg}"
                     break
             except Exception as e:
-                logger.exception(f"[Bluetooth] Send raised an exception on file {fname}")
+                logger.exception("[Bluetooth] Send raised an exception on file %s", fname)
                 msg = f"Error on file {fname}: {type(e).__name__}: {e}"
                 success = False
                 break
-                
+
         if success:
             msg = f"Successfully sent {total_files} file(s)."
 
@@ -420,7 +318,6 @@ def upload_bluetooth_send_bt(app: Any, *, logger: Logger, settings: Any) -> None
                 if getattr(app, "_bt_send_session", 0) == session:
                     app._bt_send_finished = True
                 _bt_cancel_send_watchdog(app)
-                _bt_hide_bluetooth_status_busy(app)
                 return
             _bt_finalize_bluetooth_send(
                 app,
@@ -437,6 +334,37 @@ def upload_bluetooth_send_bt(app: Any, *, logger: Logger, settings: Any) -> None
     threading.Thread(target=work, daemon=True).start()
 
 
+def _bluetooth_doctor_apply_sendto_fix(app: Any, *, logger: Logger) -> None:
+    ok, msg = doctor_add_fsquirt_sendto_shortcut()
+    logger.info(
+        "[Bluetooth Doctor] Add SendTo shortcut result: ok=%s msg=%s",
+        ok,
+        msg,
+    )
+    recheck = doctor_sendto_has_bluetooth_entry(logger)
+    app.upload_bluetooth_status.insert(
+        "end",
+        "\n\n[4] Auto-fix attempted: "
+        + ("SUCCESS" if ok else "FAILED")
+        + f"\n    Detail: {msg}\n    Re-check SendTo: {'YES' if recheck else 'NO'}",
+    )
+    if ok and recheck:
+        _showinfo(
+            app,
+            "Bluetooth Doctor",
+            "Added Bluetooth File Transfer to shell:sendto successfully.",
+        )
+    else:
+        _showwarning(
+            app,
+            "Bluetooth Doctor",
+            "Could not confirm the shortcut in SendTo. "
+            "You can add it manually via shell:sendto.",
+        )
+    if hasattr(app, "_safe_page_update"):
+        app._safe_page_update()
+
+
 def _doctor_done_ui(
     app: Any,
     snap: BluetoothDoctorSnapshot,
@@ -451,7 +379,8 @@ def _doctor_done_ui(
 
     if snap.all_pass:
         logger.info("[Bluetooth Doctor] All checks passed")
-        messagebox.showinfo(
+        _showinfo(
+            app,
             "Bluetooth Doctor",
             "All Bluetooth checks passed.\n\n"
             "Your PC appears ready for Bluetooth file transfer.",
@@ -459,67 +388,55 @@ def _doctor_done_ui(
         return
 
     if snap.should_offer_fix:
-        ask = messagebox.askyesno(
-            "Bluetooth Doctor",
+        offer_msg = (
             "Bluetooth is available and fsquirt.exe is present, but 'Send to' "
             "does not contain a Bluetooth entry.\n\n"
-            "Allow this app to add 'Bluetooth File Transfer' into shell:sendto?",
+            "Allow this app to add 'Bluetooth File Transfer' into shell:sendto?"
         )
-        if ask:
-            ok, msg = doctor_add_fsquirt_sendto_shortcut()
-            logger.info(
-                "[Bluetooth Doctor] Add SendTo shortcut result: ok=%s msg=%s",
-                ok,
-                msg,
-            )
-            recheck = doctor_sendto_has_bluetooth_entry(logger)
-            app.upload_bluetooth_status.insert(
-                "end",
-                "\n\n[4] Auto-fix attempted: "
-                + ("SUCCESS" if ok else "FAILED")
-                + f"\n    Detail: {msg}\n    Re-check SendTo: {'YES' if recheck else 'NO'}",
-            )
-            if ok and recheck:
-                messagebox.showinfo(
-                    "Bluetooth Doctor",
-                    "Added Bluetooth File Transfer to shell:sendto successfully.",
-                )
-            else:
-                messagebox.showwarning(
-                    "Bluetooth Doctor",
-                    "Could not confirm the shortcut in SendTo. "
-                    "You can add it manually via shell:sendto.",
-                )
-        else:
+        schedule = getattr(app, "schedule_confirm_dialog", None)
+        if not callable(schedule):
+            _showwarning(app, "Bluetooth Doctor", offer_msg)
+            return
+
+        def on_yes() -> None:
+            _bluetooth_doctor_apply_sendto_fix(app, logger=logger)
+
+        def on_no() -> None:
             logger.info("[Bluetooth Doctor] User declined SendTo auto-fix")
-    else:
-        app.upload_bluetooth_status.insert(
-            "end",
-            "\n\n[4] Auto-fix condition not met (requires [1]=OK, [2]=NO, [3]=OK).",
-        )
-        problems = []
-        if not snap.supports_bt:
-            problems.append("Bluetooth adapter/runtime is not ready")
-        if not snap.fsquirt_ok:
-            problems.append("fsquirt.exe is missing or not discoverable")
-        if snap.supports_bt and snap.fsquirt_ok and snap.sendto_has_bt:
-            problems.append("No actionable issue found for auto-fix")
-        reason = "; ".join(problems) if problems else "Unknown reason"
-        logger.warning(
-            "[Bluetooth Doctor] Failure path (non-fsquirt-auto-fix): %s",
-            reason,
-        )
-        messagebox.showwarning(
-            "Bluetooth Doctor",
-            "Bluetooth Doctor found issues that cannot be auto-fixed here.\n\n"
-            f"Reason: {reason}",
-        )
+
+        schedule("Bluetooth Doctor", offer_msg, on_yes=on_yes, on_no=on_no)
+        return
+
+    app.upload_bluetooth_status.insert(
+        "end",
+        "\n\n[4] Auto-fix condition not met (requires [1]=OK, [2]=NO, [3]=OK).",
+    )
+    problems = []
+    if not snap.supports_bt:
+        problems.append("Bluetooth adapter/runtime is not ready")
+    if not snap.fsquirt_ok:
+        problems.append("fsquirt.exe is missing or not discoverable")
+    if snap.supports_bt and snap.fsquirt_ok and snap.sendto_has_bt:
+        problems.append("No actionable issue found for auto-fix")
+    reason = "; ".join(problems) if problems else "Unknown reason"
+    logger.warning(
+        "[Bluetooth Doctor] Failure path (non-fsquirt-auto-fix): %s",
+        reason,
+    )
+    _showwarning(
+        app,
+        "Bluetooth Doctor",
+        "Bluetooth Doctor found issues that cannot be auto-fixed here.\n\n"
+        f"Reason: {reason}",
+    )
 
 
 def upload_bluetooth_doctor(app: Any, *, logger: Logger) -> None:
     app.upload_bluetooth_doctor_btn.configure(state="disabled")
     app.upload_bluetooth_status.delete("1.0", "end")
     app.upload_bluetooth_status.insert("1.0", "Running Bluetooth Doctor...")
+    if hasattr(app, "_safe_page_update"):
+        app._safe_page_update()
     logger.info("[Bluetooth Doctor] Started diagnostics")
 
     def work() -> None:
